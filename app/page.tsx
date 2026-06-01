@@ -431,6 +431,10 @@ export default function Page() {
   const [newRoleName, setNewRoleName] = React.useState("");
   const [newRoleDescription, setNewRoleDescription] = React.useState("");
   const [newRolePermissions, setNewRolePermissions] = React.useState<string[]>(["dashboard"]);
+  const [editingRoleId, setEditingRoleId] = React.useState<string | null>(null);
+  const [editingRoleName, setEditingRoleName] = React.useState("");
+  const [editingRoleDescription, setEditingRoleDescription] = React.useState("");
+  const [editingRolePermissions, setEditingRolePermissions] = React.useState<string[]>([]);
   const [newUserEmail, setNewUserEmail] = React.useState("");
   const [newUserPassword, setNewUserPassword] = React.useState("");
   const [newUserFullName, setNewUserFullName] = React.useState("");
@@ -926,6 +930,38 @@ export default function Page() {
       showToast("Rolle wurde angelegt.", "success");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Rolle konnte nicht angelegt werden.", "error");
+    } finally {
+      setUserAdminLoading(false);
+    }
+  };
+
+  const startEditingRole = (role: AppRole) => {
+    setEditingRoleId(role.id);
+    setEditingRoleName(role.name);
+    setEditingRoleDescription(role.description);
+    setEditingRolePermissions(role.permissions);
+  };
+
+  const handleUpdateRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !editingRoleId || !editingRoleName.trim() || editingRolePermissions.length === 0) return;
+    setUserAdminLoading(true);
+    try {
+      const { error } = await supabase
+        .from("app_roles")
+        .update({
+          name: editingRoleName.trim(),
+          description: editingRoleDescription.trim(),
+          permissions: editingRolePermissions,
+        })
+        .eq("id", editingRoleId);
+
+      if (error) throw error;
+      setEditingRoleId(null);
+      await loadUserAdminData();
+      showToast("Rolle wurde aktualisiert.", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Rolle konnte nicht aktualisiert werden.", "error");
     } finally {
       setUserAdminLoading(false);
     }
@@ -4070,6 +4106,102 @@ export default function Page() {
                     ))}
                     {appUsers.length === 0 && (
                       <p className="text-xs text-slate-500">Noch keine Benutzerprofile vorhanden.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Rollenübersicht</h3>
+                  <div className="space-y-3">
+                    {appRoles.map((role) => {
+                      const isEditing = editingRoleId === role.id;
+
+                      return (
+                        <div key={role.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          {isEditing ? (
+                            <form onSubmit={handleUpdateRole} className="space-y-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <input
+                                  type="text"
+                                  value={editingRoleName}
+                                  onChange={(e) => setEditingRoleName(e.target.value)}
+                                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                                />
+                                <input
+                                  type="text"
+                                  value={editingRoleDescription}
+                                  onChange={(e) => setEditingRoleDescription(e.target.value)}
+                                  placeholder="Beschreibung"
+                                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                                />
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {ADMIN_PERMISSIONS.map((permission) => (
+                                  <label key={permission.id} className="flex items-center space-x-2 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={editingRolePermissions.includes(permission.id)}
+                                      onChange={(e) => {
+                                        setEditingRolePermissions((current) =>
+                                          e.target.checked
+                                            ? Array.from(new Set([...current, permission.id]))
+                                            : current.filter((item) => item !== permission.id),
+                                        );
+                                      }}
+                                    />
+                                    <span>{permission.label}</span>
+                                  </label>
+                                ))}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="submit"
+                                  disabled={userAdminLoading || !editingRoleName.trim() || editingRolePermissions.length === 0}
+                                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold px-4 py-2 rounded-lg text-xs uppercase tracking-wider"
+                                >
+                                  Speichern
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingRoleId(null)}
+                                  className="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold px-4 py-2 rounded-lg text-xs uppercase tracking-wider"
+                                >
+                                  Abbrechen
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                              <div className="space-y-2">
+                                <div>
+                                  <p className="text-xs font-bold text-slate-900">{role.name}</p>
+                                  {role.description && <p className="text-[11px] text-slate-500 mt-0.5">{role.description}</p>}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {role.permissions.map((permissionId) => {
+                                    const permission = ADMIN_PERMISSIONS.find((item) => item.id === permissionId);
+                                    return (
+                                      <span key={permissionId} className="rounded bg-white border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                        {permission?.label ?? permissionId}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => startEditingRole(role)}
+                                className="self-start border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
+                              >
+                                Bearbeiten
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {appRoles.length === 0 && (
+                      <p className="text-xs text-slate-500">Noch keine Rollen vorhanden.</p>
                     )}
                   </div>
                 </div>
