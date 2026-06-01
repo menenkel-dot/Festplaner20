@@ -1,0 +1,6 @@
+{
+  "name": "Vereinsfest Planer",
+  "description": "Die ultimative Komplettlösung für die Planung, Organisation und Koordination von Vereinsfesten – mit Schichtplaner, Tischreservierung und Kostenkontrolle.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
