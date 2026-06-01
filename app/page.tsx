@@ -2347,7 +2347,7 @@ export default function Page() {
               {festInfo.name || "Vereinsfest Planer"}
             </h1>
             <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
-              Vereinsverwaltung
+              Festverwaltung
             </p>
           </div>
         </div>
@@ -2620,6 +2620,33 @@ export default function Page() {
                   </div>
 
                   <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Offene Schichtplätze nach Tag</h3>
+                    <div className="space-y-3">
+                      {(festInfo.daysConfig || []).map((day) => {
+                        const dayShifts = shifts.filter((shift) => shift.day === day.name);
+                        const needed = dayShifts.reduce((sum, shift) => sum + shift.needed, 0);
+                        const filled = dayShifts.reduce((sum, shift) => sum + shift.helpers.length, 0);
+                        const open = Math.max(0, needed - filled);
+                        const pct = needed > 0 ? Math.round((filled / needed) * 100) : 0;
+                        return (
+                          <div key={day.id} className="space-y-1">
+                            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                              <span>{day.name}</span>
+                              <span>{open} offen</span>
+                            </div>
+                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, pct)}%` }}></div>
+                            </div>
+                            <p className="text-[10px] text-slate-400 font-medium">
+                              {filled}/{needed} Plätze besetzt · {dayShifts.length} Schicht(en)
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm lg:col-span-2">
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Nächste Aufgaben</h3>
                     <div className="space-y-2">
                       {checklist.filter((item) => !item.completed).slice(0, 5).map((item) => (
@@ -3497,7 +3524,7 @@ export default function Page() {
                     </h3>
                     <p className="text-xs text-slate-500 max-w-xl font-medium leading-relaxed">
                       Veröffentlichen Sie diesen Link auf Ihrer Website oder teilen Sie ihn mit Ihren Partnervereinen und Gästen. 
-                      Sitzplatzanfragen können hierüber digital vorreserviert werden und fließen direkt hier in Ihre Prüfungsliste! Privatpersonen können maximal einen Tisch anfragen, Vereine können mehrere Tische gleichzeitig reservieren.
+                      Sitzplatzanfragen können hierüber digital vorreserviert werden und fließen direkt hier in deine Prüfungsliste! Privatpersonen können maximal einen Tisch anfragen, Vereine können mehrere Tische gleichzeitig reservieren.
 					  
                     </p>
                   </div>
@@ -3986,7 +4013,7 @@ export default function Page() {
                     <div>
                       <h2 className="text-lg font-bold text-slate-900">Benutzer & Rollen</h2>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                        Benutzer werden über eine Supabase Edge Function angelegt. Rollen steuern, welche Bereiche der Sidebar sichtbar sind.
+                        Benutzer werden über eine die Datenbank angelegt. Rollen steuern, welche Bereiche sichtbar sind.
                       </p>
                     </div>
                   </div>
