@@ -394,6 +394,7 @@ export default function Page() {
   // --- Public Helper Sign-Up Forms State ---
   const [publicSelectedShiftId, setPublicSelectedShiftId] = React.useState<string | null>(null);
   const [publicHelperName, setPublicHelperName] = React.useState("");
+  const [publicPortalLoading, setPublicPortalLoading] = React.useState(false);
 
   // --- Public Guest Reservation Form State ---
   const [publicResSelectedTables, setPublicResSelectedTables] = React.useState<number[]>([]);
@@ -762,6 +763,47 @@ export default function Page() {
     }, 0);
     return () => clearTimeout(timer);
   }, [activeTab, currentPermissions]);
+
+  React.useEffect(() => {
+    if (!supabase || !isMounted || (appMode !== "helfer" && appMode !== "reservierung")) return;
+
+    let active = true;
+    const loadingTimer = setTimeout(() => {
+      if (active) setPublicPortalLoading(true);
+    }, 0);
+
+    supabase.functions.invoke("public-festival")
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) throw error;
+        if (!data?.festInfo) return;
+
+        setFestInfo(data.festInfo);
+        setProgram(Array.isArray(data.program) ? data.program : []);
+        setShifts(Array.isArray(data.shifts) ? data.shifts : []);
+        setReservations(Array.isArray(data.reservations) ? data.reservations : []);
+
+        const firstConfiguredDay = data.festInfo.daysConfig?.[0];
+        if (firstConfiguredDay) {
+          const firstTime = firstConfiguredDay.reservationTimes?.[0] || DEFAULT_RESERVATION_TIMES[0] || "";
+          setPublicResDate(firstConfiguredDay.name);
+          setPublicResTime(firstTime);
+          setPublicResSelectedTables([]);
+        }
+      })
+      .catch((error) => {
+        console.error("Public festival load failed", error);
+        showToast("Öffentliche Daten konnten nicht geladen werden.", "error");
+      })
+      .finally(() => {
+        if (active) setPublicPortalLoading(false);
+      });
+
+    return () => {
+      active = false;
+      clearTimeout(loadingTimer);
+    };
+  }, [appMode, isMounted, supabase]);
 
   const getDayConfigByName = (dayName: string) => {
     return (festInfo.daysConfig || []).find((day) => day.name === dayName);
@@ -1493,7 +1535,7 @@ export default function Page() {
   // --- Public Workflow Actions ---
 
   // Public shift sign-up
-  const handlePublicHelperSubmit = (e: React.FormEvent) => {
+  const handlePublicHelperSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!publicSelectedShiftId) {
       showToast("Bitte wählen Sie zuerst eine Schicht aus.", "error");
@@ -1502,6 +1544,22 @@ export default function Page() {
     if (!publicHelperName.trim()) {
       showToast("Bitte tragen Sie Ihren Namen ein.", "error");
       return;
+    }
+
+    if (supabase) {
+      setPublicPortalLoading(true);
+      const { error } = await supabase.functions.invoke("public-helper-signup", {
+        body: {
+          shiftId: publicSelectedShiftId,
+          helperName: publicHelperName.trim(),
+        },
+      });
+      setPublicPortalLoading(false);
+
+      if (error) {
+        showToast(error.message || "Eintragung konnte nicht gespeichert werden.", "error");
+        return;
+      }
     }
 
     const updated = shifts.map(s => {
@@ -1683,7 +1741,18 @@ export default function Page() {
                       ))}
                     </div>
 
+                    {publicPortalLoading && (
+                      <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
+                        Lade aktuelle Schichten...
+                      </div>
+                    )}
+
                     <div className="space-y-6 max-h-[380px] overflow-y-auto pr-1">
+                      {!publicPortalLoading && shifts.length === 0 && (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-xs font-semibold text-slate-500">
+                          Aktuell sind noch keine Schichten veröffentlicht.
+                        </div>
+                      )}
                       {Object.entries(
                         shifts
                           .filter(shift => shiftDayFilter === "Alle" || shift.day === shiftDayFilter)
@@ -1739,7 +1808,7 @@ export default function Page() {
                                     </span>
                                     {s.notes && (
                                       <span className="text-slate-450 truncate max-w-[180px]">
-                                        ? {s.notes}
+                                        · {s.notes}
                                       </span>
                                     )}
                                   </div>
@@ -1779,10 +1848,10 @@ export default function Page() {
 
                   <button
                     type="submit"
-                    disabled={!publicSelectedShiftId || !publicHelperName}
+                    disabled={!publicSelectedShiftId || !publicHelperName || publicPortalLoading}
                     className="w-full bg-blue-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors text-xs uppercase tracking-wider"
                   >
-                    In den Schichtplan eintragen
+                    {publicPortalLoading ? "Bitte warten..." : "In den Schichtplan eintragen"}
                   </button>
                 </form>
               </div>
