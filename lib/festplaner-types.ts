@@ -51,6 +51,7 @@ export interface Reservation {
   phone?: string;
   guestType?: "private" | "club";
   clubName?: string;
+  clubReservationNotes?: string;
   guests: number;
   date: string;
   time: string;

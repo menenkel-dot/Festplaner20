@@ -196,6 +196,7 @@ async function replaceFestivalChildren(
         phone: item.phone || null,
         guest_type: item.guestType || "private",
         club_name: item.clubName || null,
+        club_reservation_notes: item.clubReservationNotes || null,
         guests: item.guests,
         date_label: item.date,
         time_label: item.time,
@@ -358,7 +359,7 @@ export async function loadLatestFestivalFromSupabase(
       .order("created_at", { ascending: true }),
     supabase
       .from("reservations")
-      .select("id,table_id,table_ids,table_count,name,first_name,last_name,email,phone,guest_type,club_name,guests,date_label,time_label,status")
+      .select("id,table_id,table_ids,table_count,name,first_name,last_name,email,phone,guest_type,club_name,club_reservation_notes,guests,date_label,time_label,status")
       .eq("festival_id", festival.id)
       .order("created_at", { ascending: true }),
     supabase
@@ -448,6 +449,7 @@ export async function loadLatestFestivalFromSupabase(
       phone: item.phone ? String(item.phone) : undefined,
       guestType: item.guest_type === "club" ? "club" : "private",
       clubName: item.club_name ? String(item.club_name) : undefined,
+      clubReservationNotes: item.club_reservation_notes ? String(item.club_reservation_notes) : undefined,
       guests: Number(item.guests),
       date: String(item.date_label),
       time: String(item.time_label),

@@ -68,6 +68,7 @@ interface Reservation {
   phone?: string;
   guestType?: 'private' | 'club';
   clubName?: string;
+  clubReservationNotes?: string;
   guests: number;
   date: string;
   time: string;
@@ -407,6 +408,7 @@ export default function Page() {
   const [publicResPhone, setPublicResPhone] = React.useState("");
   const [publicResGuestType, setPublicResGuestType] = React.useState<'private' | 'club'>('private');
   const [publicResClubName, setPublicResClubName] = React.useState("");
+  const [publicResClubNotes, setPublicResClubNotes] = React.useState("");
   const [publicResDate, setPublicResDate] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
   const [publicResTime, setPublicResTime] = React.useState(DEFAULT_RESERVATION_TIMES[0] ?? "");
   const [publicResTableCount, setPublicResTableCount] = React.useState(1);
@@ -1584,6 +1586,9 @@ export default function Page() {
       doc.setTextColor(100, 116, 139);
       doc.text(`${r.email}`, 38, y + 4, { maxWidth: 78 });
       doc.text(r.phone ? `Tel.: ${r.phone}` : "Tel.: -", 38, y + 8, { maxWidth: 78 });
+      if (r.clubReservationNotes) {
+        doc.text(`Marken: ${r.clubReservationNotes}`, 38, y + 12, { maxWidth: 78 });
+      }
       
       // Datum & Uhrzeit
       doc.setTextColor(15, 23, 42);
@@ -1612,7 +1617,7 @@ export default function Page() {
         doc.text("STORNIERT", 178, y);
       }
       
-      y += 14;
+      y += r.clubReservationNotes ? 18 : 14;
     });
     
     doc.setDrawColor(203, 213, 225);
@@ -1712,6 +1717,7 @@ export default function Page() {
           phone: publicResPhone.trim(),
           guestType: publicResGuestType,
           clubName: publicResGuestType === "club" ? publicResClubName.trim() : "",
+          clubReservationNotes: publicResGuestType === "club" ? publicResClubNotes.trim() : "",
           date: publicResDate,
           time: publicResTime,
           tableIds: selectedTableIds,
@@ -1738,6 +1744,7 @@ export default function Page() {
       phone: publicResPhone.trim(),
       guestType: publicResGuestType,
       clubName: publicResGuestType === "club" ? publicResClubName.trim() : undefined,
+      clubReservationNotes: publicResGuestType === "club" ? publicResClubNotes.trim() : undefined,
       guests: selectedTableIds.length * 10,
       date: publicResDate,
       time: publicResTime,
@@ -1753,6 +1760,7 @@ export default function Page() {
     setPublicResEmail("");
     setPublicResPhone("");
     setPublicResClubName("");
+    setPublicResClubNotes("");
     setPublicResSelectedTables([]);
     setPublicResTableCount(1);
     setPublicPrivacyAccepted(false);
@@ -2214,19 +2222,34 @@ export default function Page() {
                   </div>
 
                   {publicResGuestType === "club" && (
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                        Vereinsname *
-                      </label>
-                      <input
-                        type="text"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder-slate-400 focus:bg-white transition-all"
-                        placeholder="z.B. Trachtenverein Neustadt"
-                        value={publicResClubName}
-                        onChange={(e) => setPublicResClubName(e.target.value)}
-                        required
-                      />
-                    </div>
+                    <>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                          Vereinsname *
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder-slate-400 focus:bg-white transition-all"
+                          placeholder="z.B. Trachtenverein Neustadt"
+                          value={publicResClubName}
+                          onChange={(e) => setPublicResClubName(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                          Bemerkung zu Bier- und Essensmarken
+                        </label>
+                        <textarea
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder-slate-400 focus:bg-white transition-all"
+                          rows={3}
+                          placeholder="z.B. 40 Biermarken, 25 Essensmarken"
+                          value={publicResClubNotes}
+                          onChange={(e) => setPublicResClubNotes(e.target.value)}
+                        />
+                      </div>
+                    </>
                   )}
 
                   <div className="grid grid-cols-2 gap-3">
@@ -3971,6 +3994,11 @@ export default function Page() {
                               <span className="text-xs text-slate-500 font-medium block">
                                 {r.email} · Tel.: {r.phone || "-"} · {r.guests === 10 ? "1 Ganzer Tisch (10 Plätze)" : `${r.guests} Sitzplätze`}
                               </span>
+                              {r.clubReservationNotes && (
+                                <span className="text-xs text-slate-600 font-medium block rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1">
+                                  Bier-/Essensmarken: {r.clubReservationNotes}
+                                </span>
+                              )}
                             </div>
 
                             {/* Actions */}

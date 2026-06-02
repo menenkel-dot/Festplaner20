@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
     const phone = String(body.phone ?? "").trim();
     const guestType = body.guestType === "club" ? "club" : "private";
     const clubName = String(body.clubName ?? "").trim();
+    const clubReservationNotes = String(body.clubReservationNotes ?? "").trim();
     const dateLabel = String(body.date ?? "").trim();
     const timeLabel = String(body.time ?? "").trim();
 
@@ -158,6 +159,7 @@ Deno.serve(async (req) => {
         phone,
         guest_type: guestType,
         club_name: guestType === "club" ? clubName : null,
+        club_reservation_notes: guestType === "club" ? clubReservationNotes : null,
         guests: selectedTableIds.length * 10,
         date_label: dateLabel,
         time_label: timeLabel,
