@@ -45,6 +45,8 @@ interface Protocol {
   attendees: string;
   topics: string;
   decisions: string;
+  attachmentName?: string;
+  attachmentData?: string;
 }
 
 interface Shift {
@@ -361,6 +363,8 @@ export default function Page() {
   const [newProtoAttendees, setNewProtoAttendees] = React.useState("");
   const [newProtoTopics, setNewProtoTopics] = React.useState("");
   const [newProtoDecisions, setNewProtoDecisions] = React.useState("");
+  const [newProtoAttachmentName, setNewProtoAttachmentName] = React.useState("");
+  const [newProtoAttachmentData, setNewProtoAttachmentData] = React.useState("");
 
   // Shift Form
   const [newShiftDay, setNewShiftDay] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
@@ -1192,7 +1196,9 @@ export default function Page() {
       date: newProtoDate,
       attendees: newProtoAttendees,
       topics: newProtoTopics,
-      decisions: newProtoDecisions
+      decisions: newProtoDecisions,
+      attachmentName: newProtoAttachmentName || undefined,
+      attachmentData: newProtoAttachmentData || undefined,
     };
     const updated = [...protocols, newItem];
     setProtocols(updated);
@@ -1202,6 +1208,8 @@ export default function Page() {
     setNewProtoAttendees("");
     setNewProtoTopics("");
     setNewProtoDecisions("");
+    setNewProtoAttachmentName("");
+    setNewProtoAttachmentData("");
     setShowProtoForm(false);
     showToast("Besprechungsprotokoll gespeichert!");
   };
@@ -1211,6 +1219,18 @@ export default function Page() {
     setProtocols(updated);
     saveToStorage("vfp_protocols", updated);
     showToast("Protokoll gelöscht.", "info");
+  };
+
+  const handleProtocolAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setNewProtoAttachmentName(file.name);
+      setNewProtoAttachmentData(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   // Shifts (Schichten)
@@ -3265,6 +3285,16 @@ export default function Page() {
                           <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">{p.title}</h4>
                           <p className="text-[11px] text-slate-500"><strong className="text-slate-700">Themen:</strong> {p.topics}</p>
                           <p className="text-[11px] text-slate-500"><strong className="text-slate-700">Beschlüsse:</strong> {p.decisions}</p>
+                          {p.attachmentData && p.attachmentName && (
+                            <a
+                              href={p.attachmentData}
+                              download={p.attachmentName}
+                              className="inline-flex items-center space-x-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
+                            >
+                              <Paperclip className="w-3 h-3" />
+                              <span>{p.attachmentName}</span>
+                            </a>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -3334,6 +3364,34 @@ export default function Page() {
                             value={newProtoDecisions}
                             onChange={(e) => setNewProtoDecisions(e.target.value)}
                           />
+
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+                            <label className="flex items-center space-x-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                              <Paperclip className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Dokument zu den Beschlüssen anhängen</span>
+                            </label>
+                            <input
+                              type="file"
+                              accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png"
+                              className="w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-slate-700 hover:file:bg-slate-100"
+                              onChange={handleProtocolAttachmentChange}
+                            />
+                            {newProtoAttachmentName && (
+                              <div className="flex items-center justify-between gap-2 rounded-md border border-blue-100 bg-blue-50 px-2 py-1.5 text-[10px] font-semibold text-blue-800">
+                                <span className="truncate">{newProtoAttachmentName}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setNewProtoAttachmentName("");
+                                    setNewProtoAttachmentData("");
+                                  }}
+                                  className="text-blue-600 hover:text-red-600"
+                                >
+                                  Entfernen
+                                </button>
+                              </div>
+                            )}
+                          </div>
 
                           <button
                             type="submit"

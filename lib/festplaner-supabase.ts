@@ -148,6 +148,8 @@ async function replaceFestivalChildren(
         attendees: item.attendees,
         topics: item.topics,
         decisions: item.decisions,
+        attachment_name: item.attachmentName || null,
+        attachment_data: item.attachmentData || null,
       })),
     );
     if (error) throw error;
@@ -391,7 +393,7 @@ export async function loadLatestFestivalFromSupabase(
       .order("created_at", { ascending: true }),
     supabase
       .from("protocols")
-      .select("id,title,protocol_date,attendees,topics,decisions")
+      .select("id,title,protocol_date,attendees,topics,decisions,attachment_name,attachment_data")
       .eq("festival_id", festival.id)
       .order("protocol_date", { ascending: true }),
     supabase
@@ -465,6 +467,8 @@ export async function loadLatestFestivalFromSupabase(
       attendees: String(item.attendees),
       topics: String(item.topics),
       decisions: String(item.decisions),
+      attachmentName: item.attachment_name ? String(item.attachment_name) : undefined,
+      attachmentData: item.attachment_data ? String(item.attachment_data) : undefined,
     })),
     shifts: (shiftsResult.data ?? []).map((item) => ({
       id: String(item.id),

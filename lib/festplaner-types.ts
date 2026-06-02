@@ -27,6 +27,8 @@ export interface Protocol {
   attendees: string;
   topics: string;
   decisions: string;
+  attachmentName?: string;
+  attachmentData?: string;
 }
 
 export interface Shift {
