@@ -242,6 +242,31 @@ const formatDateLong = (value: string) => {
   return new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "long", year: "numeric" }).format(date);
 };
 
+const addDays = (date: Date, days: number) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const parseTimeLabel = (value: string) => {
+  const match = value.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return { hours, minutes };
+};
+
+const formatDateTimeShort = (value: Date) => {
+  return new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+};
+
 const formatFestDateRange = (startDate?: string, endDate?: string) => {
   if (!startDate && !endDate) return "";
   if (startDate && !endDate) return formatDateLong(startDate);
@@ -377,7 +402,7 @@ export default function Page() {
   // Reservierung Admin Form
   const [newResTableId, setNewResTableId] = React.useState(1);
   const [adminResDayId, setAdminResDayId] = React.useState("d1");
-  const [adminResTime, setAdminResTime] = React.useState(DEFAULT_RESERVATION_TIMES[0] ?? "");
+  const [adminResTime, setAdminResTime] = React.useState("");
   const [newResName, setNewResName] = React.useState("");
   const [newResFirstName, setNewResFirstName] = React.useState("");
   const [newResLastName, setNewResLastName] = React.useState("");
@@ -387,7 +412,7 @@ export default function Page() {
   const [newResClubName, setNewResClubName] = React.useState("");
   const [newResTableCount, setNewResTableCount] = React.useState(1);
   const [newResDate, setNewResDate] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
-  const [newResTime, setNewResTime] = React.useState(DEFAULT_RESERVATION_TIMES[0] ?? "");
+  const [newResTime, setNewResTime] = React.useState("");
 
   // Finances Form
   const [newFinType, setNewFinType] = React.useState<'expense' | 'revenue'>('expense');
@@ -415,7 +440,7 @@ export default function Page() {
   const [publicResClubName, setPublicResClubName] = React.useState("");
   const [publicResClubNotes, setPublicResClubNotes] = React.useState("");
   const [publicResDate, setPublicResDate] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
-  const [publicResTime, setPublicResTime] = React.useState(DEFAULT_RESERVATION_TIMES[0] ?? "");
+  const [publicResTime, setPublicResTime] = React.useState("");
   const [publicResTableCount, setPublicResTableCount] = React.useState(1);
   const [publicPrivacyAccepted, setPublicPrivacyAccepted] = React.useState(false);
 
@@ -507,13 +532,10 @@ export default function Page() {
           setEditedFest(parsed);
           const firstConfiguredDay = parsed.daysConfig?.[0];
           if (firstConfiguredDay) {
-            const firstTime = firstConfiguredDay.reservationTimes?.[0] || DEFAULT_RESERVATION_TIMES[0] || "";
             setNewShiftDay(firstConfiguredDay.name);
             setNewProgDay(firstConfiguredDay.name);
             setNewResDate(firstConfiguredDay.name);
-            setNewResTime(firstTime);
             setPublicResDate(firstConfiguredDay.name);
-            setPublicResTime(firstTime);
             setAdminResDayId(firstConfiguredDay.id);
           }
         } catch(e) {
@@ -590,7 +612,8 @@ export default function Page() {
     setEditedFest(snapshot.festInfo);
     const firstConfiguredDay = snapshot.festInfo.daysConfig?.[0];
     if (firstConfiguredDay) {
-      const firstTime = firstConfiguredDay.reservationTimes?.[0] || DEFAULT_RESERVATION_TIMES[0] || "";
+      const firstProgram = snapshot.program.find((item) => item.time.startsWith(`${firstConfiguredDay.name} - `));
+      const firstTime = firstProgram ? firstProgram.time.split(" - ")[1] || firstProgram.time : "";
       setNewShiftDay(firstConfiguredDay.name);
       setNewProgDay(firstConfiguredDay.name);
       setNewResDate(firstConfiguredDay.name);
@@ -810,9 +833,7 @@ export default function Page() {
         if (firstConfiguredDay) {
           const loadedProgram = Array.isArray(data.program) ? data.program : [];
           const firstProgram = loadedProgram.find((item: ProgramItem) => item.time.startsWith(`${firstConfiguredDay.name} - `));
-          const firstTime = firstProgram
-            ? firstProgram.time.split(" - ")[1] || firstProgram.time
-            : firstConfiguredDay.reservationTimes?.[0] || DEFAULT_RESERVATION_TIMES[0] || "";
+          const firstTime = firstProgram ? firstProgram.time.split(" - ")[1] || firstProgram.time : "";
           setPublicResDate(firstConfiguredDay.name);
           setPublicResTime(firstTime);
           setPublicResSelectedTables([]);
@@ -837,11 +858,6 @@ export default function Page() {
     return (festInfo.daysConfig || []).find((day) => day.name === dayName);
   };
 
-  const getReservationTimes = (dayName: string) => {
-    const day = getDayConfigByName(dayName);
-    return day?.reservationTimes?.length ? day.reservationTimes : DEFAULT_RESERVATION_TIMES;
-  };
-
   const getReservationTableIds = (reservation: Reservation) => {
     return reservation.tableIds?.length ? reservation.tableIds : [reservation.tableId];
   };
@@ -862,14 +878,39 @@ export default function Page() {
 
   const getReservationOptionsForDay = (dayName: string) => {
     const dayProgram = getProgramForDay(dayName);
-    if (dayProgram.length > 0) {
-      return dayProgram.map((item) => getProgramTimeLabel(item));
-    }
-    return getReservationTimes(dayName);
+    return dayProgram.map((item) => getProgramTimeLabel(item));
   };
 
   const getReservationProgram = (dayName: string, timeLabel: string) => {
     return getProgramForDay(dayName).find((item) => getProgramTimeLabel(item) === timeLabel);
+  };
+
+  const getFestDayDate = (dayName: string) => {
+    const startDate = parseLocalDate(festInfo.startDate);
+    if (!startDate) return null;
+    const dayIndex = (festInfo.daysConfig || []).findIndex((day) => day.name === dayName);
+    if (dayIndex < 0) return null;
+    return addDays(startDate, dayIndex);
+  };
+
+  const getReservationCutoffDate = (dayName: string, timeLabel: string) => {
+    const dayDate = getFestDayDate(dayName);
+    const time = parseTimeLabel(timeLabel);
+    if (!dayDate || !time) return null;
+    const startsAt = new Date(dayDate);
+    startsAt.setHours(time.hours, time.minutes, 0, 0);
+    return new Date(startsAt.getTime() - 2 * 60 * 60 * 1000);
+  };
+
+  const isReservationSlotOpen = (dayName: string, timeLabel: string) => {
+    const cutoff = getReservationCutoffDate(dayName, timeLabel);
+    return cutoff ? new Date() <= cutoff : false;
+  };
+
+  const getReservationCutoffText = (dayName: string, timeLabel: string) => {
+    const cutoff = getReservationCutoffDate(dayName, timeLabel);
+    if (!cutoff) return "Für diesen Programmpunkt ist keine Reservierungsfrist hinterlegt.";
+    return `Reservierungen sind bis spätestens ${formatDateTimeShort(cutoff)} Uhr möglich.`;
   };
 
   const getReservationUsesTentPlan = (dayName: string, timeLabel: string) => {
@@ -1087,9 +1128,7 @@ export default function Page() {
     setEditedFest(normalizedFest);
     if (firstConfiguredDay) {
       const firstProgram = program.find((item) => item.time.startsWith(`${firstConfiguredDay.name} - `));
-      const firstTime = firstProgram
-        ? getProgramTimeLabel(firstProgram)
-        : firstConfiguredDay.reservationTimes?.[0] || DEFAULT_RESERVATION_TIMES[0] || "";
+      const firstTime = firstProgram ? getProgramTimeLabel(firstProgram) : "";
       setAdminResDayId(firstConfiguredDay.id);
       setNewShiftDay(firstConfiguredDay.name);
       setNewProgDay(firstConfiguredDay.name);
@@ -1123,6 +1162,12 @@ export default function Page() {
     const updated = [...program, newItem];
     setProgram(updated);
     saveToStorage("vfp_program_items", updated);
+    const newTimeLabel = getProgramTimeLabel(newItem);
+    if (newResDate === newProgDay && !newResTime) setNewResTime(newTimeLabel);
+    if (publicResDate === newProgDay && !publicResTime) setPublicResTime(newTimeLabel);
+    if ((festInfo.daysConfig || []).find((day) => day.id === adminResDayId)?.name === newProgDay && !adminResTime) {
+      setAdminResTime(newTimeLabel);
+    }
     setNewProgClock("");
     setNewProgTitle("");
     setNewProgLoc("");
@@ -1296,6 +1341,10 @@ export default function Page() {
   // Reservations
   const handleAddReservation = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newResTime) {
+      showToast("Bitte zuerst einen Programmpunkt für die Reservierung anlegen.", "error");
+      return;
+    }
     if (!newResFirstName.trim() || !newResLastName.trim() || !newResEmail.trim() || !newResPhone.trim()) {
       showToast("Bitte Vorname, Name, E-Mail und Telefonnummer eingeben.", "error");
       return;
@@ -1715,6 +1764,14 @@ export default function Page() {
   // Public guest table booking request
   const handlePublicReservationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!publicResTime) {
+      showToast("Bitte wählen Sie einen Programmpunkt aus.", "error");
+      return;
+    }
+    if (!isReservationSlotOpen(publicResDate, publicResTime)) {
+      showToast("Die Reservierungsfrist für diesen Programmpunkt ist abgelaufen.", "error");
+      return;
+    }
     const usesTentPlan = getReservationUsesTentPlan(publicResDate, publicResTime);
     const requestedTableCount = publicResGuestType === "club" ? Math.max(1, publicResTableCount) : 1;
     const selectedTableIds = usesTentPlan
@@ -2113,12 +2170,31 @@ export default function Page() {
                     const tableLimit = getReservationTableLimit(publicResDate, publicResTime);
                     const reservedForSlot = getReservedTableCountForSlot(publicResDate, publicResTime);
                     const freeForSlot = Math.max(0, tableLimit - reservedForSlot);
+                    const slotOpen = publicResTime ? isReservationSlotOpen(publicResDate, publicResTime) : false;
                     
                     if (!activeDay.reservationsEnabled) {
                       return (
                         <div className="text-center py-10 px-4 bg-white rounded-lg border border-slate-200">
                           <p className="text-slate-600 font-medium text-sm">Für diesen Festtag sind aktuell keine Tischreservierungen möglich.</p>
                           <p className="text-slate-400 text-xs mt-2">Bitte wählen Sie ein anderes Datum aus.</p>
+                        </div>
+                      );
+                    }
+
+                    if (!publicResTime) {
+                      return (
+                        <div className="text-center py-10 px-4 bg-white rounded-lg border border-slate-200">
+                          <p className="text-slate-600 font-medium text-sm">Für diesen Festtag ist noch kein Programmpunkt angelegt.</p>
+                          <p className="text-slate-400 text-xs mt-2">Tischreservierungen werden an die Startzeit eines Programmpunktes gekoppelt.</p>
+                        </div>
+                      );
+                    }
+
+                    if (!slotOpen) {
+                      return (
+                        <div className="text-center py-10 px-4 bg-red-50 rounded-lg border border-red-100">
+                          <p className="text-red-800 font-bold text-sm">Die Reservierungsfrist ist abgelaufen.</p>
+                          <p className="text-red-700 text-xs mt-2">{getReservationCutoffText(publicResDate, publicResTime)}</p>
                         </div>
                       );
                     }
@@ -2160,7 +2236,7 @@ export default function Page() {
                                 <button
                                   key={tableNo}
                                   type="button"
-                                  disabled={isReserved}
+                                  disabled={isReserved || !slotOpen}
                                   onClick={() => {
                                     setPublicResSelectedTables((current) => {
                                       if (current.includes(tableNo)) {
@@ -2361,7 +2437,7 @@ export default function Page() {
                         setPublicResSelectedTables([]);
                         setPublicResTableCount(1);
                         const times = getReservationOptionsForDay(nextDate);
-                        setPublicResTime(times[0] || "19:00 Uhr");
+                        setPublicResTime(times[0] || "");
                       }}
                     >
                       {(festInfo.daysConfig || []).map((day) => (
@@ -2392,6 +2468,7 @@ export default function Page() {
                           setPublicResSelectedTables([]);
                           setPublicResTableCount(1);
                         }}
+                        disabled={getReservationOptionsForDay(publicResDate).length === 0}
                       >
                         {getReservationOptionsForDay(publicResDate).map((time) => (
                           <option key={time} value={time}>{time}</option>
@@ -2399,6 +2476,23 @@ export default function Page() {
                       </select>
                     </div>
                   </div>
+
+                  {publicResTime ? (
+                    <div className={`rounded-lg border p-3 text-xs font-medium leading-relaxed ${
+                      isReservationSlotOpen(publicResDate, publicResTime)
+                        ? "border-emerald-100 bg-emerald-50 text-emerald-800"
+                        : "border-red-100 bg-red-50 text-red-800"
+                    }`}>
+                      {getReservationCutoffText(publicResDate, publicResTime)}
+                      {!isReservationSlotOpen(publicResDate, publicResTime) && (
+                        <span className="block mt-1 font-bold">Diese Reservierung ist nicht mehr möglich.</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs font-medium leading-relaxed text-amber-800">
+                      Für diesen Festtag ist noch kein Programmpunkt angelegt. Tischreservierungen sind erst möglich, wenn ein Programmpunkt mit Startzeit existiert.
+                    </div>
+                  )}
 
                   {!getReservationUsesTentPlan(publicResDate, publicResTime) && (
                     <div>
@@ -2442,7 +2536,7 @@ export default function Page() {
 
                   <button
                     type="submit"
-                    disabled={publicPortalLoading || (getReservationUsesTentPlan(publicResDate, publicResTime) ? !publicResSelectedTables.length : publicResTableCount < 1) || !publicResFirstName || !publicResLastName || !publicResEmail || !publicResPhone || !publicPrivacyAccepted || (publicResGuestType === "club" && !publicResClubName)}
+                    disabled={publicPortalLoading || !publicResTime || !isReservationSlotOpen(publicResDate, publicResTime) || (getReservationUsesTentPlan(publicResDate, publicResTime) ? !publicResSelectedTables.length : publicResTableCount < 1) || !publicResFirstName || !publicResLastName || !publicResEmail || !publicResPhone || !publicPrivacyAccepted || (publicResGuestType === "club" && !publicResClubName)}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg shadow-sm transition-colors text-xs uppercase tracking-wider mt-2"
                   >
                     {publicPortalLoading ? "Reservierung wird gesendet..." : "Reservierungsanfrage Senden"}
@@ -3814,7 +3908,7 @@ export default function Page() {
                               key={day.id}
                               onClick={() => {
                                 setAdminResDayId(day.id);
-                                setAdminResTime(getReservationOptionsForDay(day.name)[0] || DEFAULT_RESERVATION_TIMES[0] || "");
+                                setAdminResTime(getReservationOptionsForDay(day.name)[0] || "");
                               }}
                               className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
                                 adminResDayId === day.id 
@@ -3833,7 +3927,7 @@ export default function Page() {
                         const reservationOptions = getReservationOptionsForDay(currentDay.name);
                         const selectedAdminTime = adminResTime && reservationOptions.includes(adminResTime)
                           ? adminResTime
-                          : reservationOptions[0] || DEFAULT_RESERVATION_TIMES[0] || "";
+                          : reservationOptions[0] || "";
                         const dayReservations = reservations.filter(r => r.date === currentDay.name && r.time === selectedAdminTime);
                         const dayProgram = getProgramForDay(currentDay.name);
                         const selectedProgramUsesTentPlan = getReservationUsesTentPlan(currentDay.name, selectedAdminTime);
@@ -3959,20 +4053,8 @@ export default function Page() {
                               <label className="block font-bold text-slate-500 uppercase tracking-widest">
                                 Reservierungszeiten für {currentDay.name}
                               </label>
-                              <input
-                                type="text"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                                value={(currentDay.reservationTimes?.length ? currentDay.reservationTimes : DEFAULT_RESERVATION_TIMES).join(", ")}
-                                onChange={(e) => {
-                                  const times = e.target.value
-                                    .split(",")
-                                    .map((time) => time.trim())
-                                    .filter(Boolean);
-                                  updateFestDay(adminResDayId, { reservationTimes: times.length ? times : DEFAULT_RESERVATION_TIMES });
-                                }}
-                              />
-                              <p className="text-[10px] text-slate-400 leading-normal">
-                                Kommagetrennt eingeben, z.B. 17:00 Uhr, 18:30 Uhr, 20:00 Uhr. Gäste können nur diese Zeiten auswählen.
+                              <p className="text-[10px] text-slate-500 leading-normal">
+                                Gäste können zu den Startzeiten der Programmpunkte reservieren. Neue Zeiten legst du im Festprogramm über Programmpunkte an. Reservierungen schließen automatisch 2 Stunden vor Start.
                               </p>
                             </div>
 
@@ -4143,7 +4225,7 @@ export default function Page() {
                                 setNewResDate(e.target.value);
                                 setNewResTableId(1);
                                 setNewResTableCount(1);
-                                setNewResTime(getReservationOptionsForDay(e.target.value)[0] || "19:00 Uhr");
+                                setNewResTime(getReservationOptionsForDay(e.target.value)[0] || "");
                               }}
                             >
                               {(festInfo.daysConfig || []).map((day) => (
@@ -4300,6 +4382,7 @@ export default function Page() {
                                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none text-slate-700 focus:bg-white transition-all"
                                 value={newResTime}
                                 onChange={(e) => setNewResTime(e.target.value)}
+                                disabled={getReservationOptionsForDay(newResDate).length === 0}
                               >
                                 {getReservationOptionsForDay(newResDate).map((time) => (
                                   <option key={time} value={time}>{time}</option>

@@ -11,6 +11,45 @@ const toPositiveInt = (value: unknown, fallback = 1) => {
   return Math.max(1, Math.floor(parsed));
 };
 
+const addDaysToIsoDate = (isoDate: string, days: number) => {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+const parseTimeLabel = (value: string) => {
+  const match = value.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  return { hours: Number(match[1]), minutes: Number(match[2]) };
+};
+
+const zonedDateTimeToUtc = (isoDate: string, hours: number, minutes: number, timeZone: string) => {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hours, minutes));
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(utcGuess);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const zonedAsUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second),
+  );
+  const desiredAsUtc = Date.UTC(year, month - 1, day, hours, minutes);
+  return new Date(utcGuess.getTime() + desiredAsUtc - zonedAsUtc);
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -52,7 +91,7 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: festival, error: festivalError } = await adminClient
       .from("festivals")
-      .select("id")
+      .select("id,start_date")
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -67,7 +106,7 @@ Deno.serve(async (req) => {
 
     const { data: day, error: dayError } = await adminClient
       .from("festival_days")
-      .select("name,reservations_enabled,table_count")
+      .select("name,reservations_enabled,table_count,sort_order")
       .eq("festival_id", festival.id)
       .eq("name", dateLabel)
       .maybeSingle();
@@ -92,6 +131,31 @@ Deno.serve(async (req) => {
       const configuredTime = String(item.time_label ?? "").split(" - ")[1] || String(item.time_label ?? "");
       return configuredTime === timeLabel;
     });
+
+    if (!selectedProgram) {
+      return new Response(JSON.stringify({ error: "Reservierungen sind nur fuer Programmpunkte moeglich." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const time = parseTimeLabel(timeLabel);
+    if (!festival.start_date || !time) {
+      return new Response(JSON.stringify({ error: "Reservierungsfrist konnte nicht ermittelt werden." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const eventDate = addDaysToIsoDate(String(festival.start_date), Number(day.sort_order ?? 0));
+    const startsAt = zonedDateTimeToUtc(eventDate, time.hours, time.minutes, "Europe/Berlin");
+    const cutoff = new Date(startsAt.getTime() - 2 * 60 * 60 * 1000);
+    if (Date.now() > cutoff.getTime()) {
+      return new Response(JSON.stringify({ error: "Die Reservierungsfrist fuer diesen Programmpunkt ist abgelaufen." }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const usesTentPlan = selectedProgram?.reservation_uses_tent_plan !== false;
     const tableLimit = toPositiveInt(selectedProgram?.reservation_table_limit ?? day.table_count, 16);
