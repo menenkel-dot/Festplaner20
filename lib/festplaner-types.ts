@@ -8,6 +8,8 @@ export interface ProgramItem {
   title: string;
   location: string;
   description: string;
+  reservationUsesTentPlan?: boolean;
+  reservationTableLimit?: number;
 }
 
 export interface ChecklistItem {

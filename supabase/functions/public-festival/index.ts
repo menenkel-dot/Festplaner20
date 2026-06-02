@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
         .order("sort_order", { ascending: true }),
       adminClient
         .from("program_items")
-        .select("id,time_label,title,location,description,sort_order")
+        .select("id,time_label,title,location,description,reservation_uses_tent_plan,reservation_table_limit,sort_order")
         .eq("festival_id", festival.id)
         .order("sort_order", { ascending: true }),
       adminClient
@@ -92,6 +92,8 @@ Deno.serve(async (req) => {
         title: String(item.title),
         location: String(item.location ?? ""),
         description: String(item.description ?? ""),
+        reservationUsesTentPlan: item.reservation_uses_tent_plan !== false,
+        reservationTableLimit: Number(item.reservation_table_limit ?? 16),
       })),
       shifts: (shiftsResult.data ?? []).map((item) => ({
         id: String(item.id),

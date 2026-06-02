@@ -25,6 +25,8 @@ interface ProgramItem {
   title: string;
   location: string;
   description: string;
+  reservationUsesTentPlan?: boolean;
+  reservationTableLimit?: number;
 }
 
 interface ChecklistItem {
@@ -369,6 +371,7 @@ export default function Page() {
   // Reservierung Admin Form
   const [newResTableId, setNewResTableId] = React.useState(1);
   const [adminResDayId, setAdminResDayId] = React.useState("d1");
+  const [adminResTime, setAdminResTime] = React.useState(DEFAULT_RESERVATION_TIMES[0] ?? "");
   const [newResName, setNewResName] = React.useState("");
   const [newResFirstName, setNewResFirstName] = React.useState("");
   const [newResLastName, setNewResLastName] = React.useState("");
@@ -406,6 +409,7 @@ export default function Page() {
   const [publicResClubName, setPublicResClubName] = React.useState("");
   const [publicResDate, setPublicResDate] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
   const [publicResTime, setPublicResTime] = React.useState(DEFAULT_RESERVATION_TIMES[0] ?? "");
+  const [publicResTableCount, setPublicResTableCount] = React.useState(1);
   const [publicPrivacyAccepted, setPublicPrivacyAccepted] = React.useState(false);
 
   // --- Supabase Auth State ---
@@ -789,10 +793,15 @@ export default function Page() {
 
         const firstConfiguredDay = data.festInfo.daysConfig?.[0];
         if (firstConfiguredDay) {
-          const firstTime = firstConfiguredDay.reservationTimes?.[0] || DEFAULT_RESERVATION_TIMES[0] || "";
+          const loadedProgram = Array.isArray(data.program) ? data.program : [];
+          const firstProgram = loadedProgram.find((item: ProgramItem) => item.time.startsWith(`${firstConfiguredDay.name} - `));
+          const firstTime = firstProgram
+            ? firstProgram.time.split(" - ")[1] || firstProgram.time
+            : firstConfiguredDay.reservationTimes?.[0] || DEFAULT_RESERVATION_TIMES[0] || "";
           setPublicResDate(firstConfiguredDay.name);
           setPublicResTime(firstTime);
           setPublicResSelectedTables([]);
+          setPublicResTableCount(1);
         }
       })
       .catch((error) => {
@@ -832,12 +841,43 @@ export default function Page() {
     return program.filter((item) => item.time.startsWith(`${dayName} - `));
   };
 
-  const findAvailableTables = (dayName: string, requestedCount: number) => {
+  const getProgramTimeLabel = (item: ProgramItem) => {
+    return item.time.split(" - ")[1] || item.time;
+  };
+
+  const getReservationOptionsForDay = (dayName: string) => {
+    const dayProgram = getProgramForDay(dayName);
+    if (dayProgram.length > 0) {
+      return dayProgram.map((item) => getProgramTimeLabel(item));
+    }
+    return getReservationTimes(dayName);
+  };
+
+  const getReservationProgram = (dayName: string, timeLabel: string) => {
+    return getProgramForDay(dayName).find((item) => getProgramTimeLabel(item) === timeLabel);
+  };
+
+  const getReservationUsesTentPlan = (dayName: string, timeLabel: string) => {
+    return getReservationProgram(dayName, timeLabel)?.reservationUsesTentPlan !== false;
+  };
+
+  const getReservationTableLimit = (dayName: string, timeLabel: string) => {
     const day = getDayConfigByName(dayName);
-    const maxTables = day?.tableCount || 16;
+    const programItem = getReservationProgram(dayName, timeLabel);
+    return Math.max(1, programItem?.reservationTableLimit ?? day?.tableCount ?? 16);
+  };
+
+  const getReservedTableCountForSlot = (dayName: string, timeLabel: string) => {
+    return reservations
+      .filter((reservation) => reservation.date === dayName && reservation.time === timeLabel && reservation.status !== "Storniert")
+      .reduce((sum, reservation) => sum + Math.max(1, reservation.tableCount ?? getReservationTableIds(reservation).length), 0);
+  };
+
+  const findAvailableTables = (dayName: string, timeLabel: string, requestedCount: number, tableLimit?: number) => {
+    const maxTables = tableLimit ?? getReservationTableLimit(dayName, timeLabel);
     const blocked = new Set(
       reservations
-        .filter((reservation) => reservation.date === dayName && reservation.status !== "Storniert")
+        .filter((reservation) => reservation.date === dayName && reservation.time === timeLabel && reservation.status !== "Storniert")
         .flatMap(getReservationTableIds),
     );
     const available: number[] = [];
@@ -1031,7 +1071,10 @@ export default function Page() {
     setFestInfo(normalizedFest);
     setEditedFest(normalizedFest);
     if (firstConfiguredDay) {
-      const firstTime = firstConfiguredDay.reservationTimes?.[0] || DEFAULT_RESERVATION_TIMES[0] || "";
+      const firstProgram = program.find((item) => item.time.startsWith(`${firstConfiguredDay.name} - `));
+      const firstTime = firstProgram
+        ? getProgramTimeLabel(firstProgram)
+        : firstConfiguredDay.reservationTimes?.[0] || DEFAULT_RESERVATION_TIMES[0] || "";
       setAdminResDayId(firstConfiguredDay.id);
       setNewShiftDay(firstConfiguredDay.name);
       setNewProgDay(firstConfiguredDay.name);
@@ -1058,7 +1101,9 @@ export default function Page() {
       time: `${newProgDay} - ${newProgClock} Uhr`,
       title: newProgTitle,
       location: newProgLoc || "Zeltplatz",
-      description: newProgDesc
+      description: newProgDesc,
+      reservationUsesTentPlan: true,
+      reservationTableLimit: getDayConfigByName(newProgDay)?.tableCount ?? 16,
     };
     const updated = [...program, newItem];
     setProgram(updated);
@@ -1076,6 +1121,12 @@ export default function Page() {
     setProgram(updated);
     saveToStorage("vfp_program_items", updated);
     showToast("Programmpunkt entfernt.", "info");
+  };
+
+  const updateProgramReservationSettings = (id: string, patch: Pick<Partial<ProgramItem>, "reservationUsesTentPlan" | "reservationTableLimit">) => {
+    const updated = program.map((item) => item.id === id ? { ...item, ...patch } : item);
+    setProgram(updated);
+    saveToStorage("vfp_program_items", updated);
   };
 
   // Checklist Items
@@ -1222,11 +1273,14 @@ export default function Page() {
       showToast("Bitte Vereinsname eingeben.", "error");
       return;
     }
-    const selectedTableIds =
-      newResGuestType === "club"
-        ? findAvailableTables(newResDate, Math.max(1, newResTableCount))
-        : [Number(newResTableId)];
-    if (selectedTableIds.length < Math.max(1, newResTableCount)) {
+    const usesTentPlan = getReservationUsesTentPlan(newResDate, newResTime);
+    const requestedTableCount = newResGuestType === "club" ? Math.max(1, newResTableCount) : 1;
+    const selectedTableIds = usesTentPlan
+      ? newResGuestType === "club"
+        ? findAvailableTables(newResDate, newResTime, requestedTableCount)
+        : [Number(newResTableId)]
+      : findAvailableTables(newResDate, newResTime, requestedTableCount, getReservationTableLimit(newResDate, newResTime));
+    if (selectedTableIds.length < requestedTableCount) {
       showToast("Nicht genug freie Tische für diese Reservierung verfügbar.", "error");
       return;
     }
@@ -1614,9 +1668,14 @@ export default function Page() {
   };
 
   // Public guest table booking request
-  const handlePublicReservationSubmit = (e: React.FormEvent) => {
+  const handlePublicReservationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (publicResSelectedTables.length === 0) {
+    const usesTentPlan = getReservationUsesTentPlan(publicResDate, publicResTime);
+    const requestedTableCount = publicResGuestType === "club" ? Math.max(1, publicResTableCount) : 1;
+    const selectedTableIds = usesTentPlan
+      ? publicResSelectedTables
+      : findAvailableTables(publicResDate, publicResTime, requestedTableCount, getReservationTableLimit(publicResDate, publicResTime));
+    if (usesTentPlan && selectedTableIds.length === 0) {
       showToast("Bitte wählen Sie mindestens einen Tisch auf dem Plan aus.", "error");
       return;
     }
@@ -1628,8 +1687,12 @@ export default function Page() {
       showToast("Bitte Vereinsname eingeben.", "error");
       return;
     }
-    if (publicResGuestType === "private" && publicResSelectedTables.length > 1) {
+    if (publicResGuestType === "private" && selectedTableIds.length > 1) {
       showToast("Privatpersonen können einen Tisch reservieren. Für mehrere Tische bitte Verein auswählen.", "error");
+      return;
+    }
+    if (selectedTableIds.length < requestedTableCount) {
+      showToast("Für diesen Programmpunkt sind nicht mehr genug freie Tische verfügbar.", "error");
       return;
     }
     if (!publicPrivacyAccepted) {
@@ -1639,11 +1702,35 @@ export default function Page() {
 
     const displayName = publicResGuestType === "club" ? publicResClubName.trim() : `${publicResFirstName.trim()} ${publicResLastName.trim()}`;
 
+    if (supabase) {
+      setPublicPortalLoading(true);
+      const { error } = await supabase.functions.invoke("public-reservation-submit", {
+        body: {
+          firstName: publicResFirstName.trim(),
+          lastName: publicResLastName.trim(),
+          email: publicResEmail.trim(),
+          phone: publicResPhone.trim(),
+          guestType: publicResGuestType,
+          clubName: publicResGuestType === "club" ? publicResClubName.trim() : "",
+          date: publicResDate,
+          time: publicResTime,
+          tableIds: selectedTableIds,
+          tableCount: selectedTableIds.length,
+        },
+      });
+      setPublicPortalLoading(false);
+
+      if (error) {
+        showToast(error.message || "Reservierung konnte nicht gespeichert werden.", "error");
+        return;
+      }
+    }
+
     const newRes: Reservation = {
       id: "r_g_" + Date.now().toString(),
-      tableId: publicResSelectedTables[0],
-      tableIds: publicResSelectedTables,
-      tableCount: publicResSelectedTables.length,
+      tableId: selectedTableIds[0],
+      tableIds: selectedTableIds,
+      tableCount: selectedTableIds.length,
       name: displayName,
       firstName: publicResFirstName.trim(),
       lastName: publicResLastName.trim(),
@@ -1651,7 +1738,7 @@ export default function Page() {
       phone: publicResPhone.trim(),
       guestType: publicResGuestType,
       clubName: publicResGuestType === "club" ? publicResClubName.trim() : undefined,
-      guests: publicResSelectedTables.length * 10,
+      guests: selectedTableIds.length * 10,
       date: publicResDate,
       time: publicResTime,
       status: "Ausstehend"
@@ -1667,6 +1754,7 @@ export default function Page() {
     setPublicResPhone("");
     setPublicResClubName("");
     setPublicResSelectedTables([]);
+    setPublicResTableCount(1);
     setPublicPrivacyAccepted(false);
     showToast("Anfrage übermittelt! Der Festausschuss wird sich in Kürze melden.", "success");
   };
@@ -1957,11 +2045,11 @@ export default function Page() {
               <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-sm">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center space-x-1.5">
                   <Armchair className="w-4.5 h-4.5 text-emerald-600" />
-                  <span>Schritt 1: Wunschtisch auswählen</span>
+                  <span>Schritt 1: Reservierung auswählen</span>
                 </h3>
 
                 <p className="text-xs text-slate-500 mb-4 font-sans leading-relaxed">
-                  Ein Standardtisch bietet Platz für bis zu 8-10 Personen. Noch verfügbare Tische können ausgewählt werden, graue Tische sind bereits belegt.
+                  Ein Standardtisch bietet Platz für bis zu 8-10 Personen. Je nach Programmpunkt wählen Sie Ihren Tisch im Zeltplan oder reservieren direkt aus dem verfügbaren Kontingent.
                 </p>
 
                 {/* Grid representation */}
@@ -1973,6 +2061,10 @@ export default function Page() {
                   {(() => {
                     const activeDay = (festInfo.daysConfig || []).find(d => d.name === publicResDate) || { tableCount: 16, gridCols: 4, reservationsEnabled: true };
                     const dayProgram = getProgramForDay(publicResDate);
+                    const usesTentPlan = getReservationUsesTentPlan(publicResDate, publicResTime);
+                    const tableLimit = getReservationTableLimit(publicResDate, publicResTime);
+                    const reservedForSlot = getReservedTableCountForSlot(publicResDate, publicResTime);
+                    const freeForSlot = Math.max(0, tableLimit - reservedForSlot);
                     
                     if (!activeDay.reservationsEnabled) {
                       return (
@@ -1999,48 +2091,55 @@ export default function Page() {
                           </div>
                         )}
 
-                        <div className={`grid gap-3 ${
-                          activeDay.gridCols === 2 ? 'grid-cols-2' :
-                          activeDay.gridCols === 4 ? 'grid-cols-4' :
-                          activeDay.gridCols === 6 ? 'grid-cols-3 sm:grid-cols-6' :
-                          'grid-cols-4 sm:grid-cols-8'
-                        }`}>
-                          {Array.from({ length: activeDay.tableCount }, (_, i) => {
-                            const tableNo = i + 1;
-                            const matches = reservations.filter(r => r.date === publicResDate && getReservationTableIds(r).includes(tableNo));
-                            const isReserved = matches.some(r => r.status === "Bestätigt" || r.status === "Ausstehend");
-                            const isSelected = publicResSelectedTables.includes(tableNo);
+                        {usesTentPlan ? (
+                          <div className={`grid gap-3 ${
+                            activeDay.gridCols === 2 ? 'grid-cols-2' :
+                            activeDay.gridCols === 4 ? 'grid-cols-4' :
+                            activeDay.gridCols === 6 ? 'grid-cols-3 sm:grid-cols-6' :
+                            'grid-cols-4 sm:grid-cols-8'
+                          }`}>
+                            {Array.from({ length: activeDay.tableCount }, (_, i) => {
+                              const tableNo = i + 1;
+                              const matches = reservations.filter(r => r.date === publicResDate && r.time === publicResTime && getReservationTableIds(r).includes(tableNo));
+                              const isReserved = matches.some(r => r.status === "Bestätigt" || r.status === "Ausstehend");
+                              const isSelected = publicResSelectedTables.includes(tableNo);
 
-                            let btnStyle = "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100";
-                            if (isReserved) btnStyle = "bg-slate-100 border-slate-205 text-slate-400 cursor-not-allowed pointer-events-none";
-                            else if (isSelected) btnStyle = "bg-white border-blue-600 text-blue-600 font-bold ring-2 ring-blue-100 shadow-sm";
+                              let btnStyle = "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100";
+                              if (isReserved) btnStyle = "bg-slate-100 border-slate-205 text-slate-400 cursor-not-allowed pointer-events-none";
+                              else if (isSelected) btnStyle = "bg-white border-blue-600 text-blue-600 font-bold ring-2 ring-blue-100 shadow-sm";
 
-                            return (
-                              <button
-                                key={tableNo}
-                                type="button"
-                                disabled={isReserved}
-                                onClick={() => {
-                                  setPublicResSelectedTables((current) => {
-                                    if (current.includes(tableNo)) {
-                                      return current.filter((id) => id !== tableNo);
-                                    }
-                                    if (publicResGuestType === "private") {
-                                      return [tableNo];
-                                    }
-                                    return [...current, tableNo].sort((a, b) => a - b);
-                                  });
-                                }}
-                                className={`py-3.5 px-1 rounded-lg border text-center transition-all ${btnStyle}`}
-                              >
-                                <span className="block font-bold text-xs">Tisch {tableNo}</span>
-                                <span className="block text-[8px] font-bold uppercase mt-0.5 opacity-80 tracking-wider">
-                                  {isReserved ? 'Belegt' : 'Frei'}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
+                              return (
+                                <button
+                                  key={tableNo}
+                                  type="button"
+                                  disabled={isReserved}
+                                  onClick={() => {
+                                    setPublicResSelectedTables((current) => {
+                                      if (current.includes(tableNo)) {
+                                        return current.filter((id) => id !== tableNo);
+                                      }
+                                      if (publicResGuestType === "private") {
+                                        return [tableNo];
+                                      }
+                                      return [...current, tableNo].sort((a, b) => a - b);
+                                    });
+                                  }}
+                                  className={`py-3.5 px-1 rounded-lg border text-center transition-all ${btnStyle}`}
+                                >
+                                  <span className="block font-bold text-xs">Tisch {tableNo}</span>
+                                  <span className="block text-[8px] font-bold uppercase mt-0.5 opacity-80 tracking-wider">
+                                    {isReserved ? 'Belegt' : 'Frei'}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-4 text-center">
+                            <p className="text-xs font-bold text-emerald-900">Für diesen Programmpunkt ist kein Zeltplan aktiv.</p>
+                            <p className="text-xs text-emerald-700 mt-1">{freeForSlot} von {tableLimit} Tisch(en) sind noch verfügbar.</p>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -2071,17 +2170,24 @@ export default function Page() {
                   <span>Schritt 2: Buchungsdaten eintragen</span>
                 </h3>
 
-                {publicResSelectedTables.length > 0 ? (
+                {(() => {
+                  const usesTentPlan = getReservationUsesTentPlan(publicResDate, publicResTime);
+                  const tableLimit = getReservationTableLimit(publicResDate, publicResTime);
+                  const freeForSlot = Math.max(0, tableLimit - getReservedTableCountForSlot(publicResDate, publicResTime));
+                  const selectedCount = usesTentPlan ? publicResSelectedTables.length : publicResTableCount;
+
+                  return selectedCount > 0 && (!usesTentPlan || publicResSelectedTables.length > 0) ? (
                   <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center space-x-2 text-xs text-emerald-800 font-semibold">
                     <span className="p-1 bg-emerald-600 text-white rounded">✓</span>
-                    <span>{publicResSelectedTables.length === 1 ? `Tisch ${publicResSelectedTables[0]} wurde ausgewählt.` : `${publicResSelectedTables.length} Tische wurden ausgewählt.`}</span>
+                    <span>{usesTentPlan ? (publicResSelectedTables.length === 1 ? `Tisch ${publicResSelectedTables[0]} wurde ausgewählt.` : `${publicResSelectedTables.length} Tische wurden ausgewählt.`) : `${selectedCount} Tisch(e) aus ${freeForSlot} freien Tisch(en) ausgewählt.`}</span>
                   </div>
-                ) : (
+                  ) : (
                   <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center space-x-2 text-xs text-amber-805 font-medium">
                     <AlertCircle className="w-4 h-4 text-amber-650 shrink-0" />
-                    <span>Zeltplan links anklicken, um Tisch zu wählen!</span>
+                    <span>{usesTentPlan ? "Zeltplan links anklicken, um Tisch zu wählen!" : "Bitte gewünschte Tischanzahl auswählen."}</span>
                   </div>
-                )}
+                  );
+                })()}
 
                 <form onSubmit={handlePublicReservationSubmit} className="space-y-3">
                   <div>
@@ -2096,6 +2202,9 @@ export default function Page() {
                         setPublicResGuestType(value);
                         if (value === "private" && publicResSelectedTables.length > 1) {
                           setPublicResSelectedTables(publicResSelectedTables.slice(0, 1));
+                        }
+                        if (value === "private") {
+                          setPublicResTableCount(1);
                         }
                       }}
                     >
@@ -2176,32 +2285,6 @@ export default function Page() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                        Auswahl
-                      </label>
-                      <div className="w-full bg-emerald-50/70 border border-emerald-100 text-emerald-800 rounded-lg px-3 py-2 text-xs font-bold leading-normal select-none">
-                        {publicResSelectedTables.length || 0} Tisch(e)
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                        Uhrzeit
-                      </label>
-                      <select
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 focus:bg-white"
-                        value={publicResTime}
-                        onChange={(e) => setPublicResTime(e.target.value)}
-                      >
-                        {getReservationTimes(publicResDate).map((time) => (
-                          <option key={time} value={time}>{time}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
                       Datum Auswählen
@@ -2210,9 +2293,11 @@ export default function Page() {
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 focus:bg-white"
                       value={publicResDate}
                       onChange={(e) => {
-                        setPublicResDate(e.target.value);
+                        const nextDate = e.target.value;
+                        setPublicResDate(nextDate);
                         setPublicResSelectedTables([]);
-                        const times = getReservationTimes(e.target.value);
+                        setPublicResTableCount(1);
+                        const times = getReservationOptionsForDay(nextDate);
                         setPublicResTime(times[0] || "19:00 Uhr");
                       }}
                     >
@@ -2221,6 +2306,57 @@ export default function Page() {
                       ))}
                     </select>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                        Auswahl
+                      </label>
+                      <div className="w-full bg-emerald-50/70 border border-emerald-100 text-emerald-800 rounded-lg px-3 py-2 text-xs font-bold leading-normal select-none">
+                        {getReservationUsesTentPlan(publicResDate, publicResTime) ? publicResSelectedTables.length || 0 : publicResTableCount} Tisch(e)
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                        Programmpunkt
+                      </label>
+                      <select
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 focus:bg-white"
+                        value={publicResTime}
+                        onChange={(e) => {
+                          setPublicResTime(e.target.value);
+                          setPublicResSelectedTables([]);
+                          setPublicResTableCount(1);
+                        }}
+                      >
+                        {getReservationOptionsForDay(publicResDate).map((time) => (
+                          <option key={time} value={time}>{time}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {!getReservationUsesTentPlan(publicResDate, publicResTime) && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                        Anzahl Tische *
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={Math.max(1, getReservationTableLimit(publicResDate, publicResTime) - getReservedTableCountForSlot(publicResDate, publicResTime))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 focus:bg-white transition-all"
+                        value={publicResTableCount}
+                        onChange={(e) => {
+                          const freeForSlot = Math.max(1, getReservationTableLimit(publicResDate, publicResTime) - getReservedTableCountForSlot(publicResDate, publicResTime));
+                          const value = Math.min(freeForSlot, Math.max(1, Number(e.target.value) || 1));
+                          setPublicResTableCount(publicResGuestType === "private" ? 1 : value);
+                        }}
+                        disabled={publicResGuestType === "private"}
+                      />
+                    </div>
+                  )}
 
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
                     <div className="flex items-start space-x-2">
@@ -2243,10 +2379,10 @@ export default function Page() {
 
                   <button
                     type="submit"
-                    disabled={!publicResSelectedTables.length || !publicResFirstName || !publicResLastName || !publicResEmail || !publicResPhone || !publicPrivacyAccepted || (publicResGuestType === "club" && !publicResClubName)}
+                    disabled={publicPortalLoading || (getReservationUsesTentPlan(publicResDate, publicResTime) ? !publicResSelectedTables.length : publicResTableCount < 1) || !publicResFirstName || !publicResLastName || !publicResEmail || !publicResPhone || !publicPrivacyAccepted || (publicResGuestType === "club" && !publicResClubName)}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg shadow-sm transition-colors text-xs uppercase tracking-wider mt-2"
                   >
-                    Reservierungsanfrage Senden
+                    {publicPortalLoading ? "Reservierung wird gesendet..." : "Reservierungsanfrage Senden"}
                   </button>
                 </form>
               </div>
@@ -3575,7 +3711,10 @@ export default function Page() {
                           {(festInfo.daysConfig || []).map((day) => (
                             <button
                               key={day.id}
-                              onClick={() => setAdminResDayId(day.id)}
+                              onClick={() => {
+                                setAdminResDayId(day.id);
+                                setAdminResTime(getReservationOptionsForDay(day.name)[0] || DEFAULT_RESERVATION_TIMES[0] || "");
+                              }}
                               className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
                                 adminResDayId === day.id 
                                   ? "bg-white text-emerald-700 shadow-sm border border-slate-200" 
@@ -3590,8 +3729,15 @@ export default function Page() {
 
                       {(() => {
                         const currentDay = (festInfo.daysConfig || []).find(d => d.id === adminResDayId) || { id: "fallback", tableCount: 16, gridCols: 4, name: "Unbekannt", reservationsEnabled: true, reservationTimes: DEFAULT_RESERVATION_TIMES };
-                        const dayReservations = reservations.filter(r => r.date === currentDay.name);
+                        const reservationOptions = getReservationOptionsForDay(currentDay.name);
+                        const selectedAdminTime = adminResTime && reservationOptions.includes(adminResTime)
+                          ? adminResTime
+                          : reservationOptions[0] || DEFAULT_RESERVATION_TIMES[0] || "";
+                        const dayReservations = reservations.filter(r => r.date === currentDay.name && r.time === selectedAdminTime);
                         const dayProgram = getProgramForDay(currentDay.name);
+                        const selectedProgramUsesTentPlan = getReservationUsesTentPlan(currentDay.name, selectedAdminTime);
+                        const selectedProgramTableLimit = getReservationTableLimit(currentDay.name, selectedAdminTime);
+                        const selectedProgramReservedTables = getReservedTableCountForSlot(currentDay.name, selectedAdminTime);
                         
                         return (
                           <div className="space-y-4">
@@ -3642,6 +3788,26 @@ export default function Page() {
                               </div>
                             </div>
 
+                            <div className="bg-white border border-slate-200 rounded-lg p-3 text-xs space-y-2">
+                              <label className="block font-bold text-slate-500 uppercase tracking-widest">
+                                Belegung anzeigen für Programmpunkt
+                              </label>
+                              <select
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                                value={selectedAdminTime}
+                                onChange={(e) => setAdminResTime(e.target.value)}
+                              >
+                                {reservationOptions.map((time) => (
+                                  <option key={time} value={time}>{time}</option>
+                                ))}
+                              </select>
+                              <p className="text-[10px] text-slate-400 leading-normal">
+                                {selectedProgramUsesTentPlan
+                                  ? "Der interaktive Zeltplan ist für diesen Programmpunkt aktiv."
+                                  : `${selectedProgramReservedTables}/${selectedProgramTableLimit} Tisch(en) sind für diesen Programmpunkt reserviert.`}
+                              </p>
+                            </div>
+
                             <div className="bg-blue-50/70 border border-blue-100 rounded-lg p-3 text-xs">
                               <div className="flex items-center justify-between mb-2">
                                 <h5 className="font-bold text-blue-800 uppercase tracking-widest text-[10px]">Programm für {currentDay.name}</h5>
@@ -3650,12 +3816,36 @@ export default function Page() {
                               {dayProgram.length > 0 ? (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                   {dayProgram.map((item) => (
-                                    <div key={item.id} className="bg-white/80 border border-blue-100 rounded-md px-3 py-2">
+                                    <div key={item.id} className="bg-white/80 border border-blue-100 rounded-md px-3 py-2 space-y-2">
                                       <div className="flex items-center justify-between gap-3">
                                         <span className="font-bold text-slate-800 truncate">{item.title}</span>
                                         <span className="text-blue-700 font-bold shrink-0">{item.time.split(" - ")[1]}</span>
                                       </div>
                                       {item.location && <p className="text-[10px] text-slate-500 mt-1 truncate">{item.location}</p>}
+                                      <div className="flex flex-col gap-2 rounded-md border border-slate-100 bg-slate-50/80 p-2">
+                                        <label className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                          <span>Zeltplan nutzen</span>
+                                          <input
+                                            type="checkbox"
+                                            className="rounded text-emerald-600 focus:ring-emerald-500"
+                                            checked={item.reservationUsesTentPlan !== false}
+                                            onChange={(e) => updateProgramReservationSettings(item.id, { reservationUsesTentPlan: e.target.checked })}
+                                          />
+                                        </label>
+                                        {item.reservationUsesTentPlan === false && (
+                                          <label className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                            <span>Max. Tische</span>
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              max={500}
+                                              className="w-20 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:outline-none"
+                                              value={item.reservationTableLimit ?? currentDay.tableCount}
+                                              onChange={(e) => updateProgramReservationSettings(item.id, { reservationTableLimit: Math.max(1, Number(e.target.value) || 1) })}
+                                            />
+                                          </label>
+                                        )}
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -3685,38 +3875,47 @@ export default function Page() {
                               </p>
                             </div>
 
-                            <div className={`grid gap-2 bg-slate-50/50 p-3 rounded-lg border border-slate-200 text-center text-[10px] font-bold ${
+                            {selectedProgramUsesTentPlan ? (
+                              <div className={`grid gap-2 bg-slate-50/50 p-3 rounded-lg border border-slate-200 text-center text-[10px] font-bold ${
                               currentDay.gridCols === 2 ? 'grid-cols-2 sm:grid-cols-2' :
                               currentDay.gridCols === 4 ? 'grid-cols-4 sm:grid-cols-4' :
                               currentDay.gridCols === 6 ? 'grid-cols-3 sm:grid-cols-6' :
                               'grid-cols-4 sm:grid-cols-8'
-                            }`}>
-                              {Array.from({ length: currentDay.tableCount }, (_, i) => {
-                                const tableNo = i + 1;
-                                const matches = dayReservations.filter(r => getReservationTableIds(r).includes(tableNo));
-                                const isConfirmed = matches.some(r => r.status === "Bestätigt");
-                                const isPending = matches.some(r => r.status === "Ausstehend");
-                                const nameLabel = matches[0] ? getReservationDisplayName(matches[0]) : "";
-                                const tileStyle = isConfirmed 
-                                  ? 'bg-slate-100 border-slate-300 text-slate-500' 
-                                  : isPending
-                                  ? 'bg-amber-50 border-amber-300 text-amber-800'
-                                  : 'bg-emerald-50 border-emerald-200 text-emerald-800';
+                              }`}>
+                                {Array.from({ length: currentDay.tableCount }, (_, i) => {
+                                  const tableNo = i + 1;
+                                  const matches = dayReservations.filter(r => getReservationTableIds(r).includes(tableNo));
+                                  const isConfirmed = matches.some(r => r.status === "Bestätigt");
+                                  const isPending = matches.some(r => r.status === "Ausstehend");
+                                  const nameLabel = matches[0] ? getReservationDisplayName(matches[0]) : "";
+                                  const tileStyle = isConfirmed
+                                    ? 'bg-slate-100 border-slate-300 text-slate-500'
+                                    : isPending
+                                    ? 'bg-amber-50 border-amber-300 text-amber-800'
+                                    : 'bg-emerald-50 border-emerald-200 text-emerald-800';
 
-                                return (
-                                  <div 
-                                    key={tableNo}
-                                    className={`p-1.5 rounded border flex flex-col justify-between h-14 transition-all ${tileStyle}`}
-                                    title={nameLabel ? `Reserviert für: ${nameLabel}` : "Tisch ist frei"}
-                                  >
-                                    <span>T {tableNo}</span>
-                                    <span className={`text-[8px] truncate leading-none block ${isConfirmed ? 'font-normal text-slate-400' : 'text-slate-400'}`}>
-                                      {isConfirmed ? 'Ja' : isPending ? 'Offen' : 'Frei'}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                                  return (
+                                    <div
+                                      key={tableNo}
+                                      className={`p-1.5 rounded border flex flex-col justify-between h-14 transition-all ${tileStyle}`}
+                                      title={nameLabel ? `Reserviert für: ${nameLabel}` : "Tisch ist frei"}
+                                    >
+                                      <span>T {tableNo}</span>
+                                      <span className={`text-[8px] truncate leading-none block ${isConfirmed ? 'font-normal text-slate-400' : 'text-slate-400'}`}>
+                                        {isConfirmed ? 'Ja' : isPending ? 'Offen' : 'Frei'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-5 text-center">
+                                <p className="text-sm font-bold text-emerald-900">Kontingentbuchung ohne Zeltplan</p>
+                                <p className="text-xs text-emerald-700 mt-1">
+                                  {Math.max(0, selectedProgramTableLimit - selectedProgramReservedTables)} von {selectedProgramTableLimit} Tisch(en) sind noch frei.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         );
                       })()}
@@ -3837,7 +4036,8 @@ export default function Page() {
                               onChange={(e) => {
                                 setNewResDate(e.target.value);
                                 setNewResTableId(1);
-                                setNewResTime(getReservationTimes(e.target.value)[0] || "19:00 Uhr");
+                                setNewResTableCount(1);
+                                setNewResTime(getReservationOptionsForDay(e.target.value)[0] || "19:00 Uhr");
                               }}
                             >
                               {(festInfo.daysConfig || []).map((day) => (
@@ -3853,14 +4053,18 @@ export default function Page() {
                             <select
                               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none text-slate-705 focus:bg-white transition-all"
                               value={newResGuestType}
-                              onChange={(e) => setNewResGuestType(e.target.value as 'private' | 'club')}
+                              onChange={(e) => {
+                                const value = e.target.value as 'private' | 'club';
+                                setNewResGuestType(value);
+                                if (value === "private") setNewResTableCount(1);
+                              }}
                             >
                               <option value="private">Privatperson</option>
                               <option value="club">Verein</option>
                             </select>
                           </div>
 
-                          {newResGuestType === "private" ? (
+                          {getReservationUsesTentPlan(newResDate, newResTime) && newResGuestType === "private" ? (
                             <div>
                               <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
                                 Tisch-Nummer *
@@ -3883,9 +4087,15 @@ export default function Page() {
                               <input
                                 type="number"
                                 min={1}
+                                max={Math.max(1, getReservationTableLimit(newResDate, newResTime) - getReservedTableCountForSlot(newResDate, newResTime))}
                                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none text-slate-700 focus:bg-white transition-all"
                                 value={newResTableCount}
-                                onChange={(e) => setNewResTableCount(Math.max(1, Number(e.target.value) || 1))}
+                                onChange={(e) => {
+                                  const freeForSlot = Math.max(1, getReservationTableLimit(newResDate, newResTime) - getReservedTableCountForSlot(newResDate, newResTime));
+                                  const value = Math.min(freeForSlot, Math.max(1, Number(e.target.value) || 1));
+                                  setNewResTableCount(newResGuestType === "private" ? 1 : value);
+                                }}
+                                disabled={newResGuestType === "private"}
                               />
                             </div>
                           )}
@@ -3985,7 +4195,7 @@ export default function Page() {
                                 value={newResTime}
                                 onChange={(e) => setNewResTime(e.target.value)}
                               >
-                                {getReservationTimes(newResDate).map((time) => (
+                                {getReservationOptionsForDay(newResDate).map((time) => (
                                   <option key={time} value={time}>{time}</option>
                                 ))}
                               </select>
@@ -4112,7 +4322,7 @@ export default function Page() {
                         disabled={userAdminLoading || !newUserEmail || !newUserPassword || !newUserRoleId}
                         className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold py-2.5 rounded-lg transition-colors text-xs uppercase tracking-wider"
                       >
-                        Benutzer über Edge Function anlegen
+                        Benutzer anlegen
                       </button>
                     </form>
                   </div>
