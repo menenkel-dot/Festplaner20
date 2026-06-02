@@ -2157,6 +2157,67 @@ export default function Page() {
                   Ein Standardtisch bietet Platz für bis zu 8-10 Personen. Je nach Programmpunkt wählen Sie Ihren Tisch im Zeltplan oder reservieren direkt aus dem verfügbaren Kontingent.
                 </p>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      Festtag auswählen
+                    </label>
+                    <select
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 focus:bg-white"
+                      value={publicResDate}
+                      onChange={(e) => {
+                        const nextDate = e.target.value;
+                        setPublicResDate(nextDate);
+                        setPublicResSelectedTables([]);
+                        setPublicResTableCount(1);
+                        const times = getReservationOptionsForDay(nextDate);
+                        setPublicResTime(times[0] || "");
+                      }}
+                    >
+                      {(festInfo.daysConfig || []).map((day) => (
+                        <option key={day.id} value={day.name}>{day.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      Programmpunkt auswählen
+                    </label>
+                    <select
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 focus:bg-white"
+                      value={publicResTime}
+                      onChange={(e) => {
+                        setPublicResTime(e.target.value);
+                        setPublicResSelectedTables([]);
+                        setPublicResTableCount(1);
+                      }}
+                      disabled={getReservationOptionsForDay(publicResDate).length === 0}
+                    >
+                      {getReservationOptionsForDay(publicResDate).map((time) => (
+                        <option key={time} value={time}>{time}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {publicResTime ? (
+                  <div className={`mb-4 rounded-lg border p-3 text-xs font-medium leading-relaxed ${
+                    isReservationSlotOpen(publicResDate, publicResTime)
+                      ? "border-emerald-100 bg-emerald-50 text-emerald-800"
+                      : "border-red-100 bg-red-50 text-red-800"
+                  }`}>
+                    {getReservationCutoffText(publicResDate, publicResTime)}
+                    {!isReservationSlotOpen(publicResDate, publicResTime) && (
+                      <span className="block mt-1 font-bold">Diese Reservierung ist nicht mehr möglich.</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mb-4 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs font-medium leading-relaxed text-amber-800">
+                    Für diesen Festtag ist noch kein Programmpunkt angelegt. Tischreservierungen sind erst möglich, wenn ein Programmpunkt mit Startzeit existiert.
+                  </div>
+                )}
+
                 {/* Grid representation */}
                 <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                   <div className="text-center font-mono text-[9px] text-slate-500 uppercase tracking-widest mb-4 py-1.5 border-y border-slate-200/50 font-bold bg-white/70">
@@ -2422,28 +2483,6 @@ export default function Page() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                      Datum Auswählen
-                    </label>
-                    <select
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 focus:bg-white"
-                      value={publicResDate}
-                      onChange={(e) => {
-                        const nextDate = e.target.value;
-                        setPublicResDate(nextDate);
-                        setPublicResSelectedTables([]);
-                        setPublicResTableCount(1);
-                        const times = getReservationOptionsForDay(nextDate);
-                        setPublicResTime(times[0] || "");
-                      }}
-                    >
-                      {(festInfo.daysConfig || []).map((day) => (
-                        <option key={day.id} value={day.name}>{day.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
@@ -2458,39 +2497,11 @@ export default function Page() {
                       <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
                         Programmpunkt
                       </label>
-                      <select
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-700 focus:bg-white"
-                        value={publicResTime}
-                        onChange={(e) => {
-                          setPublicResTime(e.target.value);
-                          setPublicResSelectedTables([]);
-                          setPublicResTableCount(1);
-                        }}
-                        disabled={getReservationOptionsForDay(publicResDate).length === 0}
-                      >
-                        {getReservationOptionsForDay(publicResDate).map((time) => (
-                          <option key={time} value={time}>{time}</option>
-                        ))}
-                      </select>
+                      <div className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold leading-normal text-slate-700 select-none">
+                        {publicResTime || "-"}
+                      </div>
                     </div>
                   </div>
-
-                  {publicResTime ? (
-                    <div className={`rounded-lg border p-3 text-xs font-medium leading-relaxed ${
-                      isReservationSlotOpen(publicResDate, publicResTime)
-                        ? "border-emerald-100 bg-emerald-50 text-emerald-800"
-                        : "border-red-100 bg-red-50 text-red-800"
-                    }`}>
-                      {getReservationCutoffText(publicResDate, publicResTime)}
-                      {!isReservationSlotOpen(publicResDate, publicResTime) && (
-                        <span className="block mt-1 font-bold">Diese Reservierung ist nicht mehr möglich.</span>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs font-medium leading-relaxed text-amber-800">
-                      Für diesen Festtag ist noch kein Programmpunkt angelegt. Tischreservierungen sind erst möglich, wenn ein Programmpunkt mit Startzeit existiert.
-                    </div>
-                  )}
 
                   {!getReservationUsesTentPlan(publicResDate, publicResTime) && (
                     <div>
