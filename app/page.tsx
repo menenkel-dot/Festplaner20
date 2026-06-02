@@ -895,7 +895,7 @@ export default function Page() {
     setAuthPassword("");
     const message =
       mode === "signin"
-        ? "Supabase Login erfolgreich."
+        ? "Login erfolgreich."
         : "Registrierung angelegt. Falls E-Mail-Bestätigung aktiv ist, bitte Postfach prüfen.";
     setAuthMessage(message);
     showToast(message, "success");
@@ -2290,12 +2290,19 @@ export default function Page() {
               Supabase ist nicht konfiguriert. Bitte `.env.local` mit den Supabase-Werten anlegen und den Dev-Server neu starten.
             </div>
           ) : (
-            <div className="space-y-3">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleAuthSubmit("signin");
+              }}
+              className="space-y-3"
+            >
               <input
                 type="email"
                 placeholder="E-Mail-Adresse"
                 value={authEmail}
                 onChange={(e) => setAuthEmail(e.target.value)}
+                autoComplete="email"
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:ring-1 focus:ring-blue-600 focus:outline-none"
               />
               <input
@@ -2303,17 +2310,18 @@ export default function Page() {
                 placeholder="Passwort"
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
+                autoComplete="current-password"
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:ring-1 focus:ring-blue-600 focus:outline-none"
               />
               <button
-                onClick={() => handleAuthSubmit("signin")}
+                type="submit"
                 disabled={authLoading}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold py-3 rounded-lg transition-colors text-xs uppercase tracking-wider flex items-center justify-center space-x-2"
               >
                 <LogIn className="w-4 h-4" />
                 <span>{authLoading ? "Anmelden..." : "Anmelden"}</span>
               </button>
-            </div>
+            </form>
           )}
 
           {authMessage && (
@@ -3559,7 +3567,7 @@ export default function Page() {
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
                           <Armchair className="w-4.5 h-4.5 text-emerald-600" />
-                          <span>Fahrplan & Belegung im Festzelt</span>
+                          <span>Einstellungen für Reservierung und Tischplan im Festzelt</span>
                         </h4>
                         
                         {/* Day Selector */}
@@ -4013,7 +4021,7 @@ export default function Page() {
                     <div>
                       <h2 className="text-lg font-bold text-slate-900">Benutzer & Rollen</h2>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                        Benutzer werden über eine die Datenbank angelegt. Rollen steuern, welche Bereiche sichtbar sind.
+                        Benutzer werden direkt in der Datenbank angelegt. Rollen steuern, welche Bereiche sichtbar sind.
                       </p>
                     </div>
                   </div>
@@ -4286,7 +4294,7 @@ export default function Page() {
                   
                   {/* Ledger entries list */}
                   <div className="lg:col-span-8 bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-200">Planungshaushalt / Buchungssätze</h3>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-200">Positionen</h3>
 
                     <div className="space-y-2.5 max-h-[450px] overflow-y-auto pr-1">
                       {finances.map((f) => (
@@ -4346,7 +4354,7 @@ export default function Page() {
                     
                     {/* Budget configuration box */}
                     <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Geplanter Etat (Max-Budget)</label>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Geplanter Etat (Budget)</label>
                       <div className="flex items-center space-x-2">
                         <input
                           type="number"
