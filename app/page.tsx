@@ -2268,20 +2268,18 @@ export default function Page() {
                     );
                   })()}
 
-                  <div className="flex justify-center space-x-4 mt-4 text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-                    <span className="flex items-center space-x-1.5">
-                      <span className="w-2.5 h-2.5 rounded bg-slate-50 border border-slate-200 inline-block"></span>
-                      <span>Frei</span>
-                    </span>
-                    <span className="flex items-center space-x-1.5">
-                      <span className="w-2.5 h-2.5 rounded bg-amber-50 border border-amber-200 inline-block animate-pulse"></span>
-                      <span>Angefragt</span>
-                    </span>
-                    <span className="flex items-center space-x-1.5">
-                      <span className="w-2.5 h-2.5 rounded bg-slate-100 border border-slate-200 inline-block"></span>
-                      <span>Belegt</span>
-                    </span>
-                  </div>
+                  {publicResTime && getReservationUsesTentPlan(publicResDate, publicResTime) && (
+                    <div className="flex justify-center space-x-4 mt-4 text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                      <span className="flex items-center space-x-1.5">
+                        <span className="w-2.5 h-2.5 rounded bg-slate-50 border border-slate-200 inline-block"></span>
+                        <span>Frei</span>
+                      </span>
+                      <span className="flex items-center space-x-1.5">
+                        <span className="w-2.5 h-2.5 rounded bg-slate-100 border border-slate-200 inline-block"></span>
+                        <span>Belegt</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
