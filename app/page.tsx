@@ -16,6 +16,7 @@ import {
   type FestPlanerSnapshot,
   loadLatestFestivalFromSupabase,
   saveActiveFestivalToSupabase,
+  saveFinancialItemsToSupabase,
 } from "@/lib/festplaner-supabase";
 
 // --- Types & Interfaces ---
@@ -687,7 +688,15 @@ export default function Page() {
     setSyncMessage("Speichere...");
 
     syncTimerRef.current = setTimeout(() => {
-      saveActiveFestivalToSupabase(supabase, supabaseUser, snapshot, activeFestivalId)
+      const savePromise =
+        !currentPermissions.includes("users") && currentPermissions.includes("costs") && activeFestivalId
+          ? saveFinancialItemsToSupabase(supabase, activeFestivalId, {
+              finances: snapshot.finances,
+              budget: snapshot.budget,
+            }).then(() => activeFestivalId)
+          : saveActiveFestivalToSupabase(supabase, supabaseUser, snapshot, activeFestivalId);
+
+      savePromise
         .then((festivalId) => {
           setActiveFestivalId(festivalId);
           localStorage.setItem("vfp_active_festival_id", festivalId);
@@ -703,7 +712,7 @@ export default function Page() {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [activeFestivalId, getCurrentSnapshot, supabase, supabaseUser]);
+  }, [activeFestivalId, currentPermissions, getCurrentSnapshot, supabase, supabaseUser]);
 
   const hasPermission = (permission: string) => {
     return currentPermissions.includes(permission);

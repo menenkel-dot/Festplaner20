@@ -20,6 +20,11 @@ export interface FestPlanerSnapshot {
   budget: number;
 }
 
+export interface FinanceSnapshot {
+  finances: FinancialItem[];
+  budget: number;
+}
+
 interface FestivalRow {
   id: string;
   name: string;
@@ -279,6 +284,44 @@ export async function saveActiveFestivalToSupabase(
   return activeFestivalId;
 }
 
+export async function saveFinancialItemsToSupabase(
+  supabase: SupabaseClient,
+  festivalId: string,
+  snapshot: FinanceSnapshot,
+) {
+  const { error: budgetError } = await supabase
+    .from("festivals")
+    .update({ budget: snapshot.budget })
+    .eq("id", festivalId);
+
+  if (budgetError) throw budgetError;
+
+  const { error: deleteError } = await supabase
+    .from("financial_items")
+    .delete()
+    .eq("festival_id", festivalId);
+
+  if (deleteError) throw deleteError;
+
+  if (snapshot.finances.length === 0) return;
+
+  const { error: insertError } = await supabase.from("financial_items").insert(
+    snapshot.finances.map((item) => ({
+      festival_id: festivalId,
+      type: item.type,
+      category: item.category,
+      description: item.description,
+      amount: item.amount,
+      status: mapFinancialStatus(item.status),
+      attachment_name: item.attachmentName || null,
+      attachment_data: item.attachmentData || null,
+    })),
+  );
+
+  if (insertError) throw insertError;
+}
+
+
 export async function importSnapshotToSupabase(
   supabase: SupabaseClient,
   user: User,
@@ -315,8 +358,7 @@ export async function loadLatestFestivalFromSupabase(
   const { data: festival, error: festivalError } = await supabase
     .from("festivals")
     .select("id,name,date_label,start_date,end_date,location,description,budget")
-    .eq("owner_id", user.id)
-    .order("created_at", { ascending: false })
+    .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle<FestivalRow>();
 
