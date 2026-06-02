@@ -1580,9 +1580,20 @@ export default function Page() {
     let y = 57;
     doc.setFontSize(9);
     
-    const sortedRes = [...reservations].sort((a,b) => a.tableId - b.tableId);
+    const sortedRes = reservations
+      .flatMap((reservation) =>
+        getReservationTableIds(reservation).map((tableId) => ({
+          reservation,
+          tableId,
+        })),
+      )
+      .sort((a, b) => {
+        if (a.reservation.date !== b.reservation.date) return a.reservation.date.localeCompare(b.reservation.date);
+        if (a.reservation.time !== b.reservation.time) return a.reservation.time.localeCompare(b.reservation.time);
+        return a.tableId - b.tableId;
+      });
     
-    sortedRes.forEach((r) => {
+    sortedRes.forEach(({ reservation: r, tableId }) => {
       if (y > 265) {
         doc.addPage();
         y = 20;
@@ -1606,7 +1617,7 @@ export default function Page() {
       // Tisch-Nr
       doc.setFont("helvetica", "bold");
       doc.setTextColor(15, 23, 42);
-      doc.text(`Tisch #${r.tableId}`, 16, y);
+      doc.text(`Tisch #${tableId}`, 16, y);
       
       // Reservierungname
       doc.setFont("helvetica", "bold");
@@ -1629,10 +1640,10 @@ export default function Page() {
       // Kapazität
       doc.setTextColor(15, 23, 42);
       doc.setFont("helvetica", "bold");
-      doc.text(`${r.guests} Plätze`, 158, y);
+      doc.text("10 Plätze", 158, y);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(100, 116, 139);
-      doc.text(`(${r.tableCount ?? getReservationTableIds(r).length} Tisch/e)`, 158, y + 4);
+      doc.text("(1 Tisch)", 158, y + 4);
       
       // Status
       if (r.status === "Bestätigt") {
