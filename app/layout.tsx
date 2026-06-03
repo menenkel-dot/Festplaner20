@@ -47,11 +47,38 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const creditName = process.env.NEXT_PUBLIC_APP_CREDIT_NAME?.trim() || 'FestPlaner';
+  const creditUrl = process.env.NEXT_PUBLIC_APP_CREDIT_URL?.trim();
+  const creditContact = process.env.NEXT_PUBLIC_APP_CREDIT_CONTACT?.trim();
+
   return (
     <html lang="de" suppressHydrationWarning className={`${inter.variable} ${jetbrainsMono.variable}`}>
-      <body suppressHydrationWarning className="antialiased font-sans bg-slate-50 text-slate-900">
+      <body suppressHydrationWarning className="min-h-screen antialiased font-sans bg-slate-50 text-slate-900">
         <PwaRegister />
         {children}
+        <footer className="border-t border-slate-200/70 bg-white/70 px-4 py-4 text-center text-[10px] font-medium leading-relaxed text-slate-400">
+          <span>Erstellt von </span>
+          {creditUrl ? (
+            <a
+              href={creditUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-slate-500 hover:text-slate-700"
+            >
+              {creditName}
+            </a>
+          ) : (
+            <span className="font-semibold text-slate-500">{creditName}</span>
+          )}
+          {creditContact ? (
+            <>
+              <span> · Kontakt / Impressum: </span>
+              <span className="font-semibold text-slate-500">{creditContact}</span>
+            </>
+          ) : (
+            <span> · Mini-Impressum</span>
+          )}
+        </footer>
       </body>
     </html>
   );
