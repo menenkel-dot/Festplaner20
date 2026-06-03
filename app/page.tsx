@@ -1973,7 +1973,7 @@ export default function Page() {
         <div className="bg-white border-b border-slate-200">
           <div className="max-w-4xl mx-auto px-4 py-10">
             <div className="mb-5 flex">
-              <div className="h-14 w-24 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="h-16 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <Image
                   src="/logo.jpg"
                   alt="FestPlaner Logo"
@@ -2203,7 +2203,7 @@ export default function Page() {
         <div className="bg-white border-b border-slate-200">
           <div className="max-w-4xl mx-auto px-4 py-10">
             <div className="mb-5 flex">
-              <div className="h-14 w-24 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="h-16 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <Image
                   src="/logo.jpg"
                   alt="FestPlaner Logo"
@@ -2764,7 +2764,7 @@ export default function Page() {
       {/* Top navigation header */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200 py-4 px-4 md:px-8 flex justify-between items-center">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="h-12 w-16 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <Image
               src="/logo.jpg"
               alt="FestPlaner Logo"
@@ -2849,18 +2849,6 @@ export default function Page() {
         <aside className={`fixed inset-y-0 left-0 z-40 transform lg:static lg:translate-x-0 w-64 bg-white border-r border-slate-200 flex flex-col p-6 space-y-1.5 shrink-0 transition-transform duration-300 ease-in-out ${
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}>
-          <div className="mb-5 pl-1">
-            <div className="h-16 w-28 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <Image
-                src="/logo.jpg"
-                alt="FestPlaner Logo"
-                width={180}
-                height={110}
-                className="h-full w-full object-contain p-2"
-                priority
-              />
-            </div>
-          </div>
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-3 pb-2">
             PLANUNGSTOOLS
           </div>
