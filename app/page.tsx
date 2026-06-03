@@ -134,6 +134,18 @@ const ADMIN_PERMISSIONS = [
   { id: "users", label: "Benutzer & Rollen" },
 ];
 
+const DASHBOARD_WIDGET_PERMISSIONS = [
+  { id: "dashboard:reserved_tables", label: "Reservierte Tische" },
+  { id: "dashboard:pending_reservations", label: "Offene Anfragen" },
+  { id: "dashboard:open_shift_spots", label: "Offene Schichtplätze" },
+  { id: "dashboard:checklist_progress", label: "Checkliste" },
+  { id: "dashboard:reservations_by_day", label: "Reservierungen nach Tag" },
+  { id: "dashboard:open_shifts_by_day", label: "Offene Schichtplätze nach Tag" },
+  { id: "dashboard:next_tasks", label: "Nächste Aufgaben" },
+];
+
+const DASHBOARD_WIDGET_PERMISSION_IDS = DASHBOARD_WIDGET_PERMISSIONS.map((permission) => permission.id);
+
 interface AppRole {
   id: string;
   name: string;
@@ -466,7 +478,7 @@ export default function Page() {
   const [currentPermissions, setCurrentPermissions] = React.useState<string[]>(ADMIN_PERMISSIONS.map((permission) => permission.id));
   const [newRoleName, setNewRoleName] = React.useState("");
   const [newRoleDescription, setNewRoleDescription] = React.useState("");
-  const [newRolePermissions, setNewRolePermissions] = React.useState<string[]>(["dashboard"]);
+  const [newRolePermissions, setNewRolePermissions] = React.useState<string[]>(["dashboard", ...DASHBOARD_WIDGET_PERMISSION_IDS]);
   const [editingRoleId, setEditingRoleId] = React.useState<string | null>(null);
   const [editingRoleName, setEditingRoleName] = React.useState("");
   const [editingRoleDescription, setEditingRoleDescription] = React.useState("");
@@ -745,6 +757,35 @@ export default function Page() {
     return currentPermissions.includes(permission);
   };
 
+  const hasDashboardWidgetPermission = (permission: string) => {
+    if (!hasPermission("dashboard")) return false;
+    const explicitWidgetPermissions = currentPermissions.filter((item) => item.startsWith("dashboard:"));
+    if (explicitWidgetPermissions.length === 0) return true;
+    return currentPermissions.includes(permission);
+  };
+
+  const toggleRolePermission = (
+    setter: React.Dispatch<React.SetStateAction<string[]>>,
+    permissionId: string,
+    checked: boolean,
+  ) => {
+    setter((current) => {
+      if (checked) {
+        const next = Array.from(new Set([...current, permissionId]));
+        if (permissionId === "dashboard") {
+          return Array.from(new Set([...next, ...DASHBOARD_WIDGET_PERMISSION_IDS]));
+        }
+        return next;
+      }
+
+      const next = current.filter((item) => item !== permissionId);
+      if (permissionId === "dashboard") {
+        return next.filter((item) => !item.startsWith("dashboard:"));
+      }
+      return next;
+    });
+  };
+
   const openTab = (tab: AdminTab) => {
     if (!hasPermission(tab)) {
       showToast("Für diesen Bereich fehlen die Berechtigungen.", "error");
@@ -1021,7 +1062,7 @@ export default function Page() {
       if (error) throw error;
       setNewRoleName("");
       setNewRoleDescription("");
-      setNewRolePermissions(["dashboard"]);
+      setNewRolePermissions(["dashboard", ...DASHBOARD_WIDGET_PERMISSION_IDS]);
       await loadUserAdminData();
       showToast("Rolle wurde angelegt.", "success");
     } catch (error) {
@@ -1880,6 +1921,32 @@ export default function Page() {
   const pendingReservations = reservations.filter((reservation) => reservation.status === "Ausstehend").length;
   const confirmedReservations = reservations.filter((reservation) => reservation.status === "Bestätigt").length;
   const openShiftSpots = shifts.reduce((sum, shift) => sum + Math.max(0, shift.needed - shift.helpers.length), 0);
+  const visibleDashboardMetrics = [
+    {
+      id: "dashboard:reserved_tables",
+      label: "Reservierte Tische",
+      value: `${reservedTables}/${totalTables}`,
+      hint: `${openTables} Tische frei`,
+    },
+    {
+      id: "dashboard:pending_reservations",
+      label: "Offene Anfragen",
+      value: pendingReservations,
+      hint: `${confirmedReservations} bestätigt`,
+    },
+    {
+      id: "dashboard:open_shift_spots",
+      label: "Offene Schichtplätze",
+      value: openShiftSpots,
+      hint: `${shifts.length} Schichten angelegt`,
+    },
+    {
+      id: "dashboard:checklist_progress",
+      label: "Checkliste",
+      value: `${checklistProgress}%`,
+      hint: `${checklist.filter(c => !c.completed).length} Aufgaben offen`,
+    },
+  ].filter((metric) => hasDashboardWidgetPermission(metric.id));
 
   // Render standard Loader while loading localstorage safely
   if (!isMounted) {
@@ -2893,92 +2960,97 @@ export default function Page() {
                       <h2 className="text-2xl font-bold text-slate-900 mt-1">{festInfo.name}</h2>
                       <p className="text-sm text-slate-500 mt-1">{festInfo.date} · {festInfo.location}</p>
                     </div>
-                    <button
-                      onClick={() => setActiveTab("reservations")}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors"
-                    >
-                      Reservierungen prüfen
-                    </button>
+                    {hasPermission("reservations") && (
+                      <button
+                        onClick={() => setActiveTab("reservations")}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors"
+                      >
+                        Reservierungen prüfen
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                  {[
-                    { label: "Reservierte Tische", value: `${reservedTables}/${totalTables}`, hint: `${openTables} Tische frei`, tone: "emerald" },
-                    { label: "Offene Anfragen", value: pendingReservations, hint: `${confirmedReservations} bestätigt`, tone: "amber" },
-                    { label: "Offene Schichtplätze", value: openShiftSpots, hint: `${shifts.length} Schichten angelegt`, tone: "blue" },
-                    { label: "Checkliste", value: `${checklistProgress}%`, hint: `${checklist.filter(c => !c.completed).length} Aufgaben offen`, tone: "slate" },
-                  ].map((metric) => (
+                {visibleDashboardMetrics.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                    {visibleDashboardMetrics.map((metric) => (
                     <div key={metric.label} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{metric.label}</span>
                       <strong className="text-2xl font-bold text-slate-900 block mt-2">{metric.value}</strong>
                       <p className="text-xs text-slate-500 mt-1 font-medium">{metric.hint}</p>
                     </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Reservierungen nach Tag</h3>
-                    <div className="space-y-3">
-                      {(festInfo.daysConfig || []).map((day) => {
-                        const count = reservations
-                          .filter((reservation) => reservation.date === day.name && reservation.status !== "Storniert")
-                          .flatMap(getReservationTableIds).length;
-                        const pct = day.tableCount > 0 ? Math.round((count / day.tableCount) * 100) : 0;
-                        return (
-                          <div key={day.id} className="space-y-1">
-                            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                              <span>{day.name}</span>
-                              <span>{count}/{day.tableCount}</span>
+                  {hasDashboardWidgetPermission("dashboard:reservations_by_day") && (
+                    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Reservierungen nach Tag</h3>
+                      <div className="space-y-3">
+                        {(festInfo.daysConfig || []).map((day) => {
+                          const count = reservations
+                            .filter((reservation) => reservation.date === day.name && reservation.status !== "Storniert")
+                            .flatMap(getReservationTableIds).length;
+                          const pct = day.tableCount > 0 ? Math.round((count / day.tableCount) * 100) : 0;
+                          return (
+                            <div key={day.id} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                                <span>{day.name}</span>
+                                <span>{count}/{day.tableCount}</span>
+                              </div>
+                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(100, pct)}%` }}></div>
+                              </div>
                             </div>
-                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(100, pct)}%` }}></div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Offene Schichtplätze nach Tag</h3>
-                    <div className="space-y-3">
-                      {(festInfo.daysConfig || []).map((day) => {
-                        const dayShifts = shifts.filter((shift) => shift.day === day.name);
-                        const needed = dayShifts.reduce((sum, shift) => sum + shift.needed, 0);
-                        const filled = dayShifts.reduce((sum, shift) => sum + shift.helpers.length, 0);
-                        const open = Math.max(0, needed - filled);
-                        const pct = needed > 0 ? Math.round((filled / needed) * 100) : 0;
-                        return (
-                          <div key={day.id} className="space-y-1">
-                            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                              <span>{day.name}</span>
-                              <span>{open} offen</span>
+                  {hasDashboardWidgetPermission("dashboard:open_shifts_by_day") && (
+                    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Offene Schichtplätze nach Tag</h3>
+                      <div className="space-y-3">
+                        {(festInfo.daysConfig || []).map((day) => {
+                          const dayShifts = shifts.filter((shift) => shift.day === day.name);
+                          const needed = dayShifts.reduce((sum, shift) => sum + shift.needed, 0);
+                          const filled = dayShifts.reduce((sum, shift) => sum + shift.helpers.length, 0);
+                          const open = Math.max(0, needed - filled);
+                          const pct = needed > 0 ? Math.round((filled / needed) * 100) : 0;
+                          return (
+                            <div key={day.id} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                                <span>{day.name}</span>
+                                <span>{open} offen</span>
+                              </div>
+                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, pct)}%` }}></div>
+                              </div>
+                              <p className="text-[10px] text-slate-400 font-medium">
+                                {filled}/{needed} Plätze besetzt · {dayShifts.length} Schicht(en)
+                              </p>
                             </div>
-                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, pct)}%` }}></div>
-                            </div>
-                            <p className="text-[10px] text-slate-400 font-medium">
-                              {filled}/{needed} Plätze besetzt · {dayShifts.length} Schicht(en)
-                            </p>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm lg:col-span-2">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Nächste Aufgaben</h3>
-                    <div className="space-y-2">
-                      {checklist.filter((item) => !item.completed).slice(0, 5).map((item) => (
-                        <div key={item.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50/60">
-                          <p className="text-xs font-bold text-slate-800">{item.task}</p>
-                          <p className="text-[10px] text-slate-500 mt-1">{item.assignedTo || "Noch nicht zugewiesen"}{item.dueDate ? ` · ${new Date(item.dueDate).toLocaleDateString("de-DE")}` : ""}</p>
-                        </div>
-                      ))}
+                  {hasDashboardWidgetPermission("dashboard:next_tasks") && (
+                    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm lg:col-span-2">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Nächste Aufgaben</h3>
+                      <div className="space-y-2">
+                        {checklist.filter((item) => !item.completed).slice(0, 5).map((item) => (
+                          <div key={item.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50/60">
+                            <p className="text-xs font-bold text-slate-800">{item.task}</p>
+                            <p className="text-[10px] text-slate-500 mt-1">{item.assignedTo || "Noch nicht zugewiesen"}{item.dueDate ? ` · ${new Date(item.dueDate).toLocaleDateString("de-DE")}` : ""}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </motion.div>
             )}
@@ -4484,17 +4556,37 @@ export default function Page() {
                               type="checkbox"
                               checked={newRolePermissions.includes(permission.id)}
                               onChange={(e) => {
-                                setNewRolePermissions((current) =>
-                                  e.target.checked
-                                    ? Array.from(new Set([...current, permission.id]))
-                                    : current.filter((item) => item !== permission.id),
-                                );
+                                toggleRolePermission(setNewRolePermissions, permission.id, e.target.checked);
                               }}
                             />
                             <span>{permission.label}</span>
                           </label>
                         ))}
                       </div>
+                      {newRolePermissions.includes("dashboard") && (
+                        <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 space-y-2">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Sichtbare Dashboard-Kacheln</p>
+                            <p className="text-[10px] text-blue-700/80 mt-0.5 leading-normal">
+                              Diese Auswahl gilt nur, wenn die Rolle Zugriff auf das Dashboard hat.
+                            </p>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {DASHBOARD_WIDGET_PERMISSIONS.map((permission) => (
+                              <label key={permission.id} className="flex items-center space-x-2 text-xs text-slate-600 bg-white border border-blue-100 rounded-lg px-3 py-2">
+                                <input
+                                  type="checkbox"
+                                  checked={newRolePermissions.includes(permission.id)}
+                                  onChange={(e) => {
+                                    toggleRolePermission(setNewRolePermissions, permission.id, e.target.checked);
+                                  }}
+                                />
+                                <span>{permission.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <button
                         type="submit"
                         disabled={userAdminLoading || !newRoleName.trim() || newRolePermissions.length === 0}
@@ -4609,17 +4701,37 @@ export default function Page() {
                                       type="checkbox"
                                       checked={editingRolePermissions.includes(permission.id)}
                                       onChange={(e) => {
-                                        setEditingRolePermissions((current) =>
-                                          e.target.checked
-                                            ? Array.from(new Set([...current, permission.id]))
-                                            : current.filter((item) => item !== permission.id),
-                                        );
+                                        toggleRolePermission(setEditingRolePermissions, permission.id, e.target.checked);
                                       }}
                                     />
                                     <span>{permission.label}</span>
                                   </label>
                                 ))}
                               </div>
+                              {editingRolePermissions.includes("dashboard") && (
+                                <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 space-y-2">
+                                  <div>
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Sichtbare Dashboard-Kacheln</p>
+                                    <p className="text-[10px] text-blue-700/80 mt-0.5 leading-normal">
+                                      Entfernte Kacheln werden für Benutzer dieser Rolle im Dashboard ausgeblendet.
+                                    </p>
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                    {DASHBOARD_WIDGET_PERMISSIONS.map((permission) => (
+                                      <label key={permission.id} className="flex items-center space-x-2 text-xs text-slate-600 bg-white border border-blue-100 rounded-lg px-3 py-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={editingRolePermissions.includes(permission.id)}
+                                          onChange={(e) => {
+                                            toggleRolePermission(setEditingRolePermissions, permission.id, e.target.checked);
+                                          }}
+                                        />
+                                        <span>{permission.label}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                               <div className="flex flex-wrap gap-2">
                                 <button
                                   type="submit"
@@ -4645,7 +4757,7 @@ export default function Page() {
                                   {role.description && <p className="text-[11px] text-slate-500 mt-0.5">{role.description}</p>}
                                 </div>
                                 <div className="flex flex-wrap gap-1.5">
-                                  {role.permissions.map((permissionId) => {
+                                  {role.permissions.filter((permissionId) => !permissionId.startsWith("dashboard:")).map((permissionId) => {
                                     const permission = ADMIN_PERMISSIONS.find((item) => item.id === permissionId);
                                     return (
                                       <span key={permissionId} className="rounded bg-white border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
@@ -4654,6 +4766,25 @@ export default function Page() {
                                     );
                                   })}
                                 </div>
+                                {role.permissions.includes("dashboard") && (
+                                  <div className="space-y-1">
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dashboard-Kacheln</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {DASHBOARD_WIDGET_PERMISSIONS
+                                        .filter((permission) => role.permissions.includes(permission.id))
+                                        .map((permission) => (
+                                          <span key={permission.id} className="rounded bg-blue-50 border border-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                                            {permission.label}
+                                          </span>
+                                        ))}
+                                      {role.permissions.filter((permissionId) => permissionId.startsWith("dashboard:")).length === 0 && (
+                                        <span className="rounded bg-white border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                                          Alle Kacheln
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                               <button
                                 type="button"
