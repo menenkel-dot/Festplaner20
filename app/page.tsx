@@ -3566,7 +3566,7 @@ export default function Page() {
                           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
                             <label className="flex items-center space-x-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                               <Paperclip className="w-3.5 h-3.5 text-blue-600" />
-                              <span>Dokument zu den Beschlüssen anhängen</span>
+                              <span>Dokument ans Protokoll anhängen</span>
                             </label>
                             <input
                               type="file"
@@ -3624,8 +3624,8 @@ export default function Page() {
                       <span>Schichtplan für Mitglieder & Helfer freigeben</span>
                     </h3>
                     <p className="text-xs text-slate-500 max-w-xl font-medium leading-relaxed">
-                      Kopiere diesen speziellen Link und versenden Sie ihn über WhatsApp or E-Mail an Ihre Mitglieder. 
-                      Helfer können sich dort direkt eintragen! Es ist Keine Anmeldung nötig. Helfer können sich nur auf von dir angelegte Schichten eintragen 
+                      Kopiere diesen speziellen Link und versende ihn über WhatsApp or E-Mail an Ihre Mitglieder. 
+                      Helfer können sich dort direkt eintragen! Es ist Keine Anmeldung nötig. Helfer können sich nur in von dir angelegte Schichten eintragen 
                     </p>
                   </div>
                   
@@ -3656,7 +3656,7 @@ export default function Page() {
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 flex-wrap">
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-2">
                         <Users className="w-4.5 h-4.5 text-blue-600" />
-                        <span>Ausgeschriebene Schichten & Helferauslastung</span>
+                        <span>Ausgeschriebene Schichten & Besetzung</span>
                       </h3>
                       
                       <button
