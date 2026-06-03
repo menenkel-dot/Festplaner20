@@ -2128,8 +2128,8 @@ export default function Page() {
               Tischreservierung anfragen
             </h1>
             <p className="text-slate-500 text-sm font-medium max-w-2xl font-sans">
-              Sichern Sie sich einen Tisch auf dem Traditionsfest: <strong className="text-slate-900 font-bold">{festInfo.name || "Ihr Vereinsfest"}</strong>.
-              Wählen Sie einfach Ihren Wunschtisch auf dem Plan aus und füllen Sie die Kontaktdaten aus.
+              Sichere dir einen Tisch auf dem Fest: <strong className="text-slate-900 font-bold">{festInfo.name || "Ihr Vereinsfest"}</strong>.
+              Wählen einen Termin aus und füllen Sie die Kontaktdaten aus.
             </p>
           </div>
         </div>
@@ -2154,7 +2154,7 @@ export default function Page() {
                 </h3>
 
                 <p className="text-xs text-slate-500 mb-4 font-sans leading-relaxed">
-                  Ein Standardtisch bietet Platz für bis zu 8-10 Personen. Je nach Programmpunkt wählen Sie Ihren Tisch im Zeltplan oder reservieren direkt aus dem verfügbaren Kontingent.
+                  Ein Standardtisch bietet Platz für bis zu 8-10 Personen. Je nach Programmpunkt wähle deinen Tisch im Zeltplan oder reserviere ihn direkt aus dem verfügbaren Kontingent.
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
@@ -2414,12 +2414,12 @@ export default function Page() {
 
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                          Bemerkung zu Bier- und Essensmarken
+                          Bemerkung zu Bier- und Essensmarken und Fahnen
                         </label>
                         <textarea
                           className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder-slate-400 focus:bg-white transition-all"
                           rows={3}
-                          placeholder="z.B. 40 Biermarken, 25 Essensmarken"
+                          placeholder="z.B. Wir benötigen 40 Biermarken, 25 Essensmarken + 1x Fahne"
                           value={publicResClubNotes}
                           onChange={(e) => setPublicResClubNotes(e.target.value)}
                         />
@@ -2633,7 +2633,7 @@ export default function Page() {
           )}
 
           <div className="pt-2 border-t border-slate-100 text-center text-[11px] text-slate-400 leading-normal">
-            Öffentliche Portale bleiben separat erreichbar: `/helfer` und `/reservierung`.
+            Reservierung und Schichtpläne sind öffentlich erreichbar.
           </div>
         </div>
       </div>
@@ -3871,8 +3871,8 @@ export default function Page() {
                       <span>Tischreservierungslink für Fest-Gäste</span>
                     </h3>
                     <p className="text-xs text-slate-500 max-w-xl font-medium leading-relaxed">
-                      Veröffentlichen Sie diesen Link auf Ihrer Website oder teilen Sie ihn mit Ihren Partnervereinen und Gästen. 
-                      Sitzplatzanfragen können hierüber digital vorreserviert werden und fließen direkt hier in deine Prüfungsliste! Privatpersonen können maximal einen Tisch anfragen, Vereine können mehrere Tische gleichzeitig reservieren.
+                      Veröffentliche diesen Link auf deiner Website oder teile ihn mit deinen Partnervereinen und Gästen. 
+                      Reservierungsanfragen können hierüber digital vorreserviert werden und fließen direkt hier in deine Prüfungsliste! Privatpersonen können maximal einen Tisch anfragen, Vereine können mehrere Tische gleichzeitig reservieren.
 					  
                     </p>
                   </div>
