@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import * as React from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Calendar, Clock, MapPin, Users, Plus, Trash2, CheckSquare, 
@@ -1971,6 +1972,18 @@ export default function Page() {
         {/* Header Visual - Clean Minimalism */}
         <div className="bg-white border-b border-slate-200">
           <div className="max-w-4xl mx-auto px-4 py-10">
+            <div className="mb-5 flex">
+              <div className="h-14 w-24 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <Image
+                  src="/logo.jpg"
+                  alt="FestPlaner Logo"
+                  width={160}
+                  height={96}
+                  className="h-full w-full object-contain p-2"
+                  priority
+                />
+              </div>
+            </div>
             <div className="flex items-center space-x-2 text-blue-605 text-xs tracking-widest uppercase font-bold mb-2">
               <Sparkles className="w-4 h-4 text-blue-500" />
               <span>Mitglieder & Helferportal</span>
@@ -2189,6 +2202,18 @@ export default function Page() {
         {/* Header Visual - Clean Minimalism */}
         <div className="bg-white border-b border-slate-200">
           <div className="max-w-4xl mx-auto px-4 py-10">
+            <div className="mb-5 flex">
+              <div className="h-14 w-24 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <Image
+                  src="/logo.jpg"
+                  alt="FestPlaner Logo"
+                  width={160}
+                  height={96}
+                  className="h-full w-full object-contain p-2"
+                  priority
+                />
+              </div>
+            </div>
             <div className="flex items-center space-x-2 text-emerald-600 text-xs tracking-widest uppercase font-bold mb-2">
               <Armchair className="w-4 h-4 text-emerald-500" />
               <span>Gäste Reservierungsportal</span>
@@ -2739,8 +2764,15 @@ export default function Page() {
       {/* Top navigation header */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200 py-4 px-4 md:px-8 flex justify-between items-center">
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold text-base shadow-sm">
-            FP
+          <div className="w-10 h-10 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <Image
+              src="/logo.jpg"
+              alt="FestPlaner Logo"
+              width={96}
+              height={96}
+              className="h-full w-full object-contain p-1.5"
+              priority
+            />
           </div>
           <div>
             <h1 className="text-sm md:text-md font-bold text-slate-900 tracking-tight leading-tight">
@@ -2817,6 +2849,18 @@ export default function Page() {
         <aside className={`fixed inset-y-0 left-0 z-40 transform lg:static lg:translate-x-0 w-64 bg-white border-r border-slate-200 flex flex-col p-6 space-y-1.5 shrink-0 transition-transform duration-300 ease-in-out ${
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}>
+          <div className="mb-5 pl-1">
+            <div className="h-16 w-28 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <Image
+                src="/logo.jpg"
+                alt="FestPlaner Logo"
+                width={180}
+                height={110}
+                className="h-full w-full object-contain p-2"
+                priority
+              />
+            </div>
+          </div>
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-3 pb-2">
             PLANUNGSTOOLS
           </div>
