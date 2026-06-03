@@ -2277,47 +2277,59 @@ export default function Page() {
                         )}
 
                         {usesTentPlan ? (
-                          <div className={`grid gap-3 ${
-                            activeDay.gridCols === 2 ? 'grid-cols-2' :
-                            activeDay.gridCols === 4 ? 'grid-cols-4' :
-                            activeDay.gridCols === 6 ? 'grid-cols-3 sm:grid-cols-6' :
-                            'grid-cols-4 sm:grid-cols-8'
-                          }`}>
-                            {Array.from({ length: activeDay.tableCount }, (_, i) => {
-                              const tableNo = i + 1;
-                              const matches = reservations.filter(r => r.date === publicResDate && r.time === publicResTime && getReservationTableIds(r).includes(tableNo));
-                              const isReserved = matches.some(r => r.status === "Bestätigt" || r.status === "Ausstehend");
-                              const isSelected = publicResSelectedTables.includes(tableNo);
+                          <div className="-mx-3 sm:mx-0">
+                            <div className="overflow-x-auto px-3 pb-3 sm:px-0 sm:pb-0 overscroll-x-contain">
+                              <div
+                                className="grid gap-3"
+                                style={{
+                                  gridTemplateColumns: `repeat(${activeDay.gridCols}, minmax(5.75rem, 1fr))`,
+                                  minWidth: `${activeDay.gridCols * 6.5}rem`,
+                                }}
+                              >
+                                {Array.from({ length: activeDay.tableCount }, (_, i) => {
+                                  const tableNo = i + 1;
+                                  const matches = reservations.filter(r => r.date === publicResDate && r.time === publicResTime && getReservationTableIds(r).includes(tableNo));
+                                  const isReserved = matches.some(r => r.status === "Bestätigt" || r.status === "Ausstehend");
+                                  const isSelected = publicResSelectedTables.includes(tableNo);
 
-                              let btnStyle = "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100";
-                              if (isReserved) btnStyle = "bg-slate-100 border-slate-205 text-slate-400 cursor-not-allowed pointer-events-none";
-                              else if (isSelected) btnStyle = "bg-white border-blue-600 text-blue-600 font-bold ring-2 ring-blue-100 shadow-sm";
+                                  let btnStyle = "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100";
+                                  if (isReserved) btnStyle = "bg-slate-100 border-slate-205 text-slate-400 cursor-not-allowed pointer-events-none";
+                                  else if (isSelected) btnStyle = "bg-white border-blue-600 text-blue-600 font-bold ring-2 ring-blue-100 shadow-sm";
 
-                              return (
-                                <button
-                                  key={tableNo}
-                                  type="button"
-                                  disabled={isReserved || !slotOpen}
-                                  onClick={() => {
-                                    setPublicResSelectedTables((current) => {
-                                      if (current.includes(tableNo)) {
-                                        return current.filter((id) => id !== tableNo);
-                                      }
-                                      if (publicResGuestType === "private") {
-                                        return [tableNo];
-                                      }
-                                      return [...current, tableNo].sort((a, b) => a - b);
-                                    });
-                                  }}
-                                  className={`py-3.5 px-1 rounded-lg border text-center transition-all ${btnStyle}`}
-                                >
-                                  <span className="block font-bold text-xs">Tisch {tableNo}</span>
-                                  <span className="block text-[8px] font-bold uppercase mt-0.5 opacity-80 tracking-wider">
-                                    {isReserved ? 'Belegt' : 'Frei'}
-                                  </span>
-                                </button>
-                              );
-                            })}
+                                  return (
+                                    <button
+                                      key={tableNo}
+                                      type="button"
+                                      disabled={isReserved || !slotOpen}
+                                      onClick={() => {
+                                        setPublicResSelectedTables((current) => {
+                                          if (current.includes(tableNo)) {
+                                            return current.filter((id) => id !== tableNo);
+                                          }
+                                          if (publicResGuestType === "private") {
+                                            return [tableNo];
+                                          }
+                                          return [...current, tableNo].sort((a, b) => a - b);
+                                        });
+                                      }}
+                                      className={`min-h-16 py-3.5 px-2 rounded-lg border text-center transition-all touch-manipulation ${btnStyle}`}
+                                    >
+                                      <span className="block font-bold text-xs">Tisch {tableNo}</span>
+                                      <span className="block text-[8px] font-bold uppercase mt-0.5 opacity-80 tracking-wider">
+                                        {isReserved ? 'Belegt' : 'Frei'}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between gap-3 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 sm:hidden">
+                              <span>{activeDay.gridCols} Spalten im Zeltplan</span>
+                              <span className="inline-flex items-center gap-1">
+                                <span>Nach rechts wischen</span>
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              </span>
+                            </div>
                           </div>
                         ) : (
                           <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-4 text-center">
@@ -4068,37 +4080,49 @@ export default function Page() {
                             </div>
 
                             {selectedProgramUsesTentPlan ? (
-                              <div className={`grid gap-2 bg-slate-50/50 p-3 rounded-lg border border-slate-200 text-center text-[10px] font-bold ${
-                              currentDay.gridCols === 2 ? 'grid-cols-2 sm:grid-cols-2' :
-                              currentDay.gridCols === 4 ? 'grid-cols-4 sm:grid-cols-4' :
-                              currentDay.gridCols === 6 ? 'grid-cols-3 sm:grid-cols-6' :
-                              'grid-cols-4 sm:grid-cols-8'
-                              }`}>
-                                {Array.from({ length: currentDay.tableCount }, (_, i) => {
-                                  const tableNo = i + 1;
-                                  const matches = dayReservations.filter(r => getReservationTableIds(r).includes(tableNo));
-                                  const isConfirmed = matches.some(r => r.status === "Bestätigt");
-                                  const isPending = matches.some(r => r.status === "Ausstehend");
-                                  const nameLabel = matches[0] ? getReservationDisplayName(matches[0]) : "";
-                                  const tileStyle = isConfirmed
-                                    ? 'bg-slate-100 border-slate-300 text-slate-500'
-                                    : isPending
-                                    ? 'bg-amber-50 border-amber-300 text-amber-800'
-                                    : 'bg-emerald-50 border-emerald-200 text-emerald-800';
+                              <div className="-mx-3 sm:mx-0">
+                                <div className="overflow-x-auto px-3 pb-3 sm:px-0 sm:pb-0 overscroll-x-contain">
+                                  <div
+                                    className="grid gap-2 bg-slate-50/50 p-3 rounded-lg border border-slate-200 text-center text-[10px] font-bold"
+                                    style={{
+                                      gridTemplateColumns: `repeat(${currentDay.gridCols}, minmax(4.5rem, 1fr))`,
+                                      minWidth: `${currentDay.gridCols * 5.1}rem`,
+                                    }}
+                                  >
+                                    {Array.from({ length: currentDay.tableCount }, (_, i) => {
+                                      const tableNo = i + 1;
+                                      const matches = dayReservations.filter(r => getReservationTableIds(r).includes(tableNo));
+                                      const isConfirmed = matches.some(r => r.status === "Bestätigt");
+                                      const isPending = matches.some(r => r.status === "Ausstehend");
+                                      const nameLabel = matches[0] ? getReservationDisplayName(matches[0]) : "";
+                                      const tileStyle = isConfirmed
+                                        ? 'bg-slate-100 border-slate-300 text-slate-500'
+                                        : isPending
+                                        ? 'bg-amber-50 border-amber-300 text-amber-800'
+                                        : 'bg-emerald-50 border-emerald-200 text-emerald-800';
 
-                                  return (
-                                    <div
-                                      key={tableNo}
-                                      className={`p-1.5 rounded border flex flex-col justify-between h-14 transition-all ${tileStyle}`}
-                                      title={nameLabel ? `Reserviert für: ${nameLabel}` : "Tisch ist frei"}
-                                    >
-                                      <span>T {tableNo}</span>
-                                      <span className={`text-[8px] truncate leading-none block ${isConfirmed ? 'font-normal text-slate-400' : 'text-slate-400'}`}>
-                                        {isConfirmed ? 'Ja' : isPending ? 'Offen' : 'Frei'}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
+                                      return (
+                                        <div
+                                          key={tableNo}
+                                          className={`p-1.5 rounded border flex flex-col justify-between h-14 transition-all ${tileStyle}`}
+                                          title={nameLabel ? `Reserviert für: ${nameLabel}` : "Tisch ist frei"}
+                                        >
+                                          <span>T {tableNo}</span>
+                                          <span className={`text-[8px] truncate leading-none block ${isConfirmed ? 'font-normal text-slate-400' : 'text-slate-400'}`}>
+                                            {isConfirmed ? 'Ja' : isPending ? 'Offen' : 'Frei'}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between gap-3 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 sm:hidden">
+                                  <span>{currentDay.gridCols} Spalten im Zeltplan</span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <span>Nach rechts wischen</span>
+                                    <ChevronRight className="h-3.5 w-3.5" />
+                                  </span>
+                                </div>
                               </div>
                             ) : (
                               <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-5 text-center">
