@@ -57,7 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <PwaRegister />
         {children}
         <footer className="border-t border-slate-200/70 bg-white/70 px-4 py-4 text-center text-[10px] font-medium leading-relaxed text-slate-400">
-          <span>Erstellt von </span>
+          <span>©2026 </span>
           {creditUrl ? (
             <a
               href={creditUrl}
@@ -76,7 +76,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="font-semibold text-slate-500">{creditContact}</span>
             </>
           ) : (
-            <span> · Mini-Impressum</span>
+            <>
+              <span> · Erstellt von </span>
+              <a
+                href="https://www.clickandcreate.de"
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-slate-500 hover:text-slate-700"
+              >
+                ClickandCreate
+              </a>
+              <span> c/o Maximilian Enenkel</span>
+            </>
           )}
         </footer>
       </body>
