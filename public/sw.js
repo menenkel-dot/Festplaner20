@@ -1,5 +1,5 @@
-const CACHE_NAME = "festplaner-v1";
-const PRECACHE_URLS = ["/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
+const CACHE_NAME = "festplaner-v2";
+const PRECACHE_URLS = ["/", "/manifest.webmanifest", "/favicon.png", "/app.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -37,6 +37,8 @@ self.addEventListener("fetch", (event) => {
           response.ok &&
           (url.pathname.startsWith("/_next/static/") ||
             url.pathname.startsWith("/icons/") ||
+            url.pathname === "/favicon.png" ||
+            url.pathname === "/app.png" ||
             url.pathname === "/manifest.webmanifest");
 
         if (shouldCache) {

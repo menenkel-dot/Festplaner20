@@ -1973,12 +1973,12 @@ export default function Page() {
         <div className="bg-white border-b border-slate-200">
           <div className="max-w-4xl mx-auto px-4 py-10">
             <div className="mb-5 flex">
-              <div className="h-16 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="h-32 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <Image
                   src="/logo.png"
                   alt="FestPlaner Logo"
-                  width={160}
-                  height={96}
+                  width={320}
+                  height={192}
                   className="h-full w-full object-contain p-2"
                   priority
                 />
@@ -2203,12 +2203,12 @@ export default function Page() {
         <div className="bg-white border-b border-slate-200">
           <div className="max-w-4xl mx-auto px-4 py-10">
             <div className="mb-5 flex">
-              <div className="h-16 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="h-32 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <Image
                   src="/logo.png"
                   alt="FestPlaner Logo"
-                  width={160}
-                  height={96}
+                  width={320}
+                  height={192}
                   className="h-full w-full object-contain p-2"
                   priority
                 />
@@ -2764,12 +2764,12 @@ export default function Page() {
       {/* Top navigation header */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200 py-4 px-4 md:px-8 flex justify-between items-center">
         <div className="flex items-center space-x-3">
-          <div className="h-12 w-16 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="h-16 w-24 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <Image
               src="/logo.png"
               alt="FestPlaner Logo"
-              width={96}
-              height={96}
+              width={192}
+              height={128}
               className="h-full w-full object-contain p-1.5"
               priority
             />
