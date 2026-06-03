@@ -453,7 +453,7 @@ export default function Page() {
   const [publicResClubNotes, setPublicResClubNotes] = React.useState("");
   const [publicResDate, setPublicResDate] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
   const [publicResTime, setPublicResTime] = React.useState("");
-  const [publicResTableCount, setPublicResTableCount] = React.useState(1);
+  const [publicResTableCount, setPublicResTableCount] = React.useState<number | "">(1);
   const [publicPrivacyAccepted, setPublicPrivacyAccepted] = React.useState(false);
 
   // --- Supabase Auth State ---
@@ -1802,6 +1802,8 @@ export default function Page() {
     showToast(`Vielen Dank! Du wurdest erfolgreich eingetragen.`, "success");
   };
 
+  const getNormalizedPublicTableCount = () => Math.max(1, Number(publicResTableCount) || 1);
+
   // Public guest table booking request
   const handlePublicReservationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1814,7 +1816,7 @@ export default function Page() {
       return;
     }
     const usesTentPlan = getReservationUsesTentPlan(publicResDate, publicResTime);
-    const requestedTableCount = publicResGuestType === "club" ? Math.max(1, publicResTableCount) : 1;
+    const requestedTableCount = publicResGuestType === "club" ? getNormalizedPublicTableCount() : 1;
     const selectedTableIds = usesTentPlan
       ? publicResSelectedTables
       : findAvailableTables(publicResDate, publicResTime, requestedTableCount, getReservationTableLimit(publicResDate, publicResTime));
@@ -2436,7 +2438,7 @@ export default function Page() {
                   const usesTentPlan = getReservationUsesTentPlan(publicResDate, publicResTime);
                   const tableLimit = getReservationTableLimit(publicResDate, publicResTime);
                   const freeForSlot = Math.max(0, tableLimit - getReservedTableCountForSlot(publicResDate, publicResTime));
-                  const selectedCount = usesTentPlan ? publicResSelectedTables.length : publicResTableCount;
+                  const selectedCount = usesTentPlan ? publicResSelectedTables.length : getNormalizedPublicTableCount();
 
                   return selectedCount > 0 && (!usesTentPlan || publicResSelectedTables.length > 0) ? (
                   <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center space-x-2 text-xs text-emerald-800 font-semibold">
@@ -2568,7 +2570,7 @@ export default function Page() {
                         Auswahl
                       </label>
                       <div className="w-full bg-emerald-50/70 border border-emerald-100 text-emerald-800 rounded-lg px-3 py-2 text-xs font-bold leading-normal select-none">
-                        {getReservationUsesTentPlan(publicResDate, publicResTime) ? publicResSelectedTables.length || 0 : publicResTableCount} Tisch(e)
+                        {getReservationUsesTentPlan(publicResDate, publicResTime) ? publicResSelectedTables.length || 0 : getNormalizedPublicTableCount()} Tisch(e)
                       </div>
                     </div>
 
@@ -2595,8 +2597,17 @@ export default function Page() {
                         value={publicResTableCount}
                         onChange={(e) => {
                           const freeForSlot = Math.max(1, getReservationTableLimit(publicResDate, publicResTime) - getReservedTableCountForSlot(publicResDate, publicResTime));
+                          if (e.target.value === "") {
+                            setPublicResTableCount("");
+                            return;
+                          }
                           const value = Math.min(freeForSlot, Math.max(1, Number(e.target.value) || 1));
                           setPublicResTableCount(publicResGuestType === "private" ? 1 : value);
+                        }}
+                        onBlur={() => {
+                          if (publicResTableCount === "") {
+                            setPublicResTableCount(1);
+                          }
                         }}
                         disabled={publicResGuestType === "private"}
                       />
@@ -2624,7 +2635,7 @@ export default function Page() {
 
                   <button
                     type="submit"
-                    disabled={publicPortalLoading || !publicResTime || !isReservationSlotOpen(publicResDate, publicResTime) || (getReservationUsesTentPlan(publicResDate, publicResTime) ? !publicResSelectedTables.length : publicResTableCount < 1) || !publicResFirstName || !publicResLastName || !publicResEmail || !publicResPhone || !publicPrivacyAccepted || (publicResGuestType === "club" && !publicResClubName)}
+                    disabled={publicPortalLoading || !publicResTime || !isReservationSlotOpen(publicResDate, publicResTime) || (getReservationUsesTentPlan(publicResDate, publicResTime) ? !publicResSelectedTables.length : getNormalizedPublicTableCount() < 1) || !publicResFirstName || !publicResLastName || !publicResEmail || !publicResPhone || !publicPrivacyAccepted || (publicResGuestType === "club" && !publicResClubName)}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg shadow-sm transition-colors text-xs uppercase tracking-wider mt-2"
                   >
                     {publicPortalLoading ? "Reservierung wird gesendet..." : "Reservierungsanfrage Senden"}
