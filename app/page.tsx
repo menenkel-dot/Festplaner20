@@ -1975,7 +1975,7 @@ export default function Page() {
             <div className="mb-5 flex">
               <div className="h-16 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <Image
-                  src="/logo.jpg"
+                  src="/logo.png"
                   alt="FestPlaner Logo"
                   width={160}
                   height={96}
@@ -2205,7 +2205,7 @@ export default function Page() {
             <div className="mb-5 flex">
               <div className="h-16 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <Image
-                  src="/logo.jpg"
+                  src="/logo.png"
                   alt="FestPlaner Logo"
                   width={160}
                   height={96}
@@ -2766,7 +2766,7 @@ export default function Page() {
         <div className="flex items-center space-x-3">
           <div className="h-12 w-16 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <Image
-              src="/logo.jpg"
+              src="/logo.png"
               alt="FestPlaner Logo"
               width={96}
               height={96}
