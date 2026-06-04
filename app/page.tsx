@@ -4039,6 +4039,86 @@ export default function Page() {
                   
                   {/* Reservations checklist with approve action */}
                   <div className="lg:col-span-8 space-y-4">
+
+                    {/* Active reservations list */}
+                    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 flex-wrap">
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Digital eingegangene Reservierungen</h3>
+                        
+                        <button
+                          onClick={exportReservationsToPDF}
+                          type="button"
+                          className="inline-flex items-center space-x-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-bold text-[11px] px-3 py-1.5 rounded-lg shadow-xs transition-colors"
+                          title="Gesamte Reservierungstabelle als druckbereite PDF herunterladen"
+                        >
+                          <FileDown className="w-3.5 h-3.5 text-slate-500" />
+                          <span>PDF Export</span>
+                        </button>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {reservations.map((r) => (
+                          <div key={r.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 border border-slate-200 rounded-lg bg-slate-50/50 gap-4 relative group">
+                            
+                            <button
+                              onClick={() => handleDeleteReservation(r.id)}
+                              className="absolute top-2 right-2 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 p-0.5"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+
+                            <div className="space-y-1">
+                              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                                <span className="text-xs bg-slate-50 text-slate-700 font-bold px-2 py-0.5 rounded border border-slate-200">
+                                  {getReservationTableLabel(r)}
+                                </span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                  r.status === "Bestätigt"
+                                    ? "bg-emerald-50 text-emerald-800"
+                                    : r.status === "Ausstehend"
+                                    ? "bg-amber-50 text-amber-800 animate-pulse"
+                                    : "bg-red-50 text-red-800"
+                                }`}>
+                                  {r.status}
+                                </span>
+                                <span className="text-xs text-slate-400">
+                                  · {r.date} um {r.time}
+                                </span>
+                              </div>
+
+                              <strong className="text-slate-800 text-xs font-bold block">{r.name}</strong>
+                              <span className="text-xs text-slate-500 font-medium block">
+                                {r.email} · Tel.: {r.phone || "-"} · {r.guests === 10 ? "1 Ganzer Tisch (10 Plätze)" : `${r.guests} Sitzplätze`}
+                              </span>
+                              {r.clubReservationNotes && (
+                                <span className="text-xs text-slate-600 font-medium block rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1">
+                                  Bier-/Essensmarken: {r.clubReservationNotes}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Actions */}
+                            {r.status === "Ausstehend" && (
+                              <div className="flex items-center space-x-1.5 shrink-0">
+                                <button
+                                  onClick={() => handleUpdateReservationStatus(r.id, "Bestätigt")}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs transition-colors"
+                                >
+                                  Akzeptieren
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateReservationStatus(r.id, "Storniert")}
+                                  className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-1.5 px-3 rounded-lg text-xs transition-colors"
+                                >
+                                  Ablehnen
+                                </button>
+                              </div>
+                            )}
+
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                     
                     {/* Visual Floor Plan */}
                     <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
@@ -4261,86 +4341,6 @@ export default function Page() {
                           </div>
                         );
                       })()}
-                    </div>
-
-                    {/* Active reservations list */}
-                    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 flex-wrap">
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Digital eingegangene Reservierungen</h3>
-                        
-                        <button
-                          onClick={exportReservationsToPDF}
-                          type="button"
-                          className="inline-flex items-center space-x-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-bold text-[11px] px-3 py-1.5 rounded-lg shadow-xs transition-colors"
-                          title="Gesamte Reservierungstabelle als druckbereite PDF herunterladen"
-                        >
-                          <FileDown className="w-3.5 h-3.5 text-slate-500" />
-                          <span>PDF Export</span>
-                        </button>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        {reservations.map((r) => (
-                          <div key={r.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 border border-slate-200 rounded-lg bg-slate-50/50 gap-4 relative group">
-                            
-                            <button
-                              onClick={() => handleDeleteReservation(r.id)}
-                              className="absolute top-2 right-2 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 p-0.5"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-
-                            <div className="space-y-1">
-                              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                                <span className="text-xs bg-slate-50 text-slate-700 font-bold px-2 py-0.5 rounded border border-slate-200">
-                                  {getReservationTableLabel(r)}
-                                </span>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                  r.status === "Bestätigt"
-                                    ? "bg-emerald-50 text-emerald-800"
-                                    : r.status === "Ausstehend"
-                                    ? "bg-amber-50 text-amber-800 animate-pulse"
-                                    : "bg-red-50 text-red-800"
-                                }`}>
-                                  {r.status}
-                                </span>
-                                <span className="text-xs text-slate-400">
-                                  · {r.date} um {r.time}
-                                </span>
-                              </div>
-
-                              <strong className="text-slate-800 text-xs font-bold block">{r.name}</strong>
-                              <span className="text-xs text-slate-500 font-medium block">
-                                {r.email} · Tel.: {r.phone || "-"} · {r.guests === 10 ? "1 Ganzer Tisch (10 Plätze)" : `${r.guests} Sitzplätze`}
-                              </span>
-                              {r.clubReservationNotes && (
-                                <span className="text-xs text-slate-600 font-medium block rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1">
-                                  Bier-/Essensmarken: {r.clubReservationNotes}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Actions */}
-                            {r.status === "Ausstehend" && (
-                              <div className="flex items-center space-x-1.5 shrink-0">
-                                <button
-                                  onClick={() => handleUpdateReservationStatus(r.id, "Bestätigt")}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs transition-colors"
-                                >
-                                  Akzeptieren
-                                </button>
-                                <button
-                                  onClick={() => handleUpdateReservationStatus(r.id, "Storniert")}
-                                  className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-1.5 px-3 rounded-lg text-xs transition-colors"
-                                >
-                                  Ablehnen
-                                </button>
-                              </div>
-                            )}
-
-                          </div>
-                        ))}
-                      </div>
                     </div>
 
                   </div>
