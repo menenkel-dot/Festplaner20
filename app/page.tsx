@@ -909,6 +909,10 @@ export default function Page() {
     return reservation.tableIds?.length ? reservation.tableIds : [reservation.tableId];
   };
 
+  const getReservationTableLabel = (reservation: Reservation) => {
+    return `Tisch ${getReservationTableIds(reservation).join(", ")}`;
+  };
+
   const getReservationDisplayName = (reservation: Reservation) => {
     if (reservation.guestType === "club" && reservation.clubName) return reservation.clubName;
     const personName = [reservation.firstName, reservation.lastName].filter(Boolean).join(" ").trim();
@@ -4289,7 +4293,7 @@ export default function Page() {
                             <div className="space-y-1">
                               <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                                 <span className="text-xs bg-slate-50 text-slate-700 font-bold px-2 py-0.5 rounded border border-slate-200">
-                                  Tisch {r.tableId}
+                                  {getReservationTableLabel(r)}
                                 </span>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
                                   r.status === "Bestätigt"
