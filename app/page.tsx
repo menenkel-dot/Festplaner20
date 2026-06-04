@@ -8,7 +8,7 @@ import {
   Square, FileText, ClipboardList, Euro, Check, X, Share2, 
   ExternalLink, Menu, TrendingDown, TrendingUp, HelpCircle,
   Copy, Armchair, ChevronRight, AlertCircle, Sparkles, Paperclip, FileDown,
-  Lock, LogIn, BarChart3, UserCog, ShieldCheck
+  LogIn, BarChart3, UserCog, ShieldCheck
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import type { User } from "@supabase/supabase-js";
@@ -2702,8 +2702,15 @@ export default function Page() {
       <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-4 font-sans antialiased">
         <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-6">
           <div className="space-y-2 text-center">
-            <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center mx-auto shadow-sm">
-              <Lock className="w-6 h-6" />
+            <div className="mx-auto h-20 w-36">
+              <Image
+                src="/logo.png"
+                alt="FestPlaner Logo"
+                width={288}
+                height={160}
+                className="h-full w-full object-contain"
+                priority
+              />
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900">FestPlaner Admin</h1>
