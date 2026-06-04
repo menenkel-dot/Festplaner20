@@ -146,6 +146,8 @@ const DASHBOARD_WIDGET_PERMISSIONS = [
 ];
 
 const DASHBOARD_WIDGET_PERMISSION_IDS = DASHBOARD_WIDGET_PERMISSIONS.map((permission) => permission.id);
+const ADMIN_PERMISSION_IDS = ADMIN_PERMISSIONS.map((permission) => permission.id);
+const FULL_ADMIN_PERMISSION_IDS = [...ADMIN_PERMISSION_IDS, ...DASHBOARD_WIDGET_PERMISSION_IDS];
 
 interface AppRole {
   id: string;
@@ -476,7 +478,7 @@ export default function Page() {
   const [authReady, setAuthReady] = React.useState(() => !isSupabaseConfigured());
   const [appRoles, setAppRoles] = React.useState<AppRole[]>([]);
   const [appUsers, setAppUsers] = React.useState<AppUserProfile[]>([]);
-  const [currentPermissions, setCurrentPermissions] = React.useState<string[]>(ADMIN_PERMISSIONS.map((permission) => permission.id));
+  const [currentPermissions, setCurrentPermissions] = React.useState<string[]>(FULL_ADMIN_PERMISSION_IDS);
   const [newRoleName, setNewRoleName] = React.useState("");
   const [newRoleDescription, setNewRoleDescription] = React.useState("");
   const [newRolePermissions, setNewRolePermissions] = React.useState<string[]>(["dashboard", ...DASHBOARD_WIDGET_PERMISSION_IDS]);
@@ -804,7 +806,7 @@ export default function Page() {
       supabase.from("app_user_profiles").select("user_id,email,full_name,role_id").order("created_at", { ascending: false }),
       supabase
         .from("app_user_profiles")
-        .select("role:app_roles(permissions)")
+        .select("role:app_roles(name,permissions)")
         .eq("user_id", supabaseUser.id)
         .maybeSingle(),
     ]);
@@ -827,10 +829,13 @@ export default function Page() {
     })));
     setNewUserRoleId((current) => current || roles[0]?.id || "");
 
-    const profilePermissions = (currentProfileResult.data as any)?.role?.permissions;
-    setCurrentPermissions(Array.isArray(profilePermissions) && profilePermissions.length
-      ? profilePermissions.map(String)
-      : ADMIN_PERMISSIONS.map((permission) => permission.id));
+    const profileRole = (currentProfileResult.data as any)?.role;
+    const profilePermissions = profileRole?.permissions;
+    setCurrentPermissions(String(profileRole?.name ?? "").toLowerCase() === "admin"
+      ? FULL_ADMIN_PERMISSION_IDS
+      : Array.isArray(profilePermissions) && profilePermissions.length
+        ? profilePermissions.map(String)
+        : ADMIN_PERMISSION_IDS);
   }, [supabase, supabaseUser]);
 
   React.useEffect(() => {
@@ -838,7 +843,7 @@ export default function Page() {
     const timer = setTimeout(() => {
       loadUserAdminData().catch((error) => {
         console.error("User admin data failed", error);
-        setCurrentPermissions(ADMIN_PERMISSIONS.map((permission) => permission.id));
+        setCurrentPermissions(FULL_ADMIN_PERMISSION_IDS);
       });
     }, 0);
     return () => clearTimeout(timer);
@@ -1055,10 +1060,11 @@ export default function Page() {
     if (!supabase || !newRoleName.trim()) return;
     setUserAdminLoading(true);
     try {
+      const roleName = newRoleName.trim();
       const { error } = await supabase.from("app_roles").insert({
-        name: newRoleName.trim(),
+        name: roleName,
         description: newRoleDescription.trim(),
-        permissions: newRolePermissions,
+        permissions: roleName.toLowerCase() === "admin" ? FULL_ADMIN_PERMISSION_IDS : newRolePermissions,
       });
       if (error) throw error;
       setNewRoleName("");
@@ -1085,12 +1091,13 @@ export default function Page() {
     if (!supabase || !editingRoleId || !editingRoleName.trim() || editingRolePermissions.length === 0) return;
     setUserAdminLoading(true);
     try {
+      const roleName = editingRoleName.trim();
       const { error } = await supabase
         .from("app_roles")
         .update({
-          name: editingRoleName.trim(),
+          name: roleName,
           description: editingRoleDescription.trim(),
-          permissions: editingRolePermissions,
+          permissions: roleName.toLowerCase() === "admin" ? FULL_ADMIN_PERMISSION_IDS : editingRolePermissions,
         })
         .eq("id", editingRoleId);
 

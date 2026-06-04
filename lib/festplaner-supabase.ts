@@ -252,7 +252,6 @@ export async function saveActiveFestivalToSupabase(
   }
 
   const festivalPayload = {
-    owner_id: user.id,
     name: snapshot.festInfo.name,
     date_label: snapshot.festInfo.date,
     start_date: snapshot.festInfo.startDate || null,
@@ -266,14 +265,16 @@ export async function saveActiveFestivalToSupabase(
     const { error } = await supabase
       .from("festivals")
       .update(festivalPayload)
-      .eq("id", activeFestivalId)
-      .eq("owner_id", user.id);
+      .eq("id", activeFestivalId);
 
     if (error) throw error;
   } else {
     const { data: festival, error } = await supabase
       .from("festivals")
-      .insert(festivalPayload)
+      .insert({
+        owner_id: user.id,
+        ...festivalPayload,
+      })
       .select("id")
       .single();
 
