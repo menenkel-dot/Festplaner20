@@ -4086,9 +4086,14 @@ export default function Page() {
                                 </span>
                               </div>
 
-                              <strong className="text-slate-800 text-xs font-bold block">{r.name}</strong>
+                              <strong className="text-slate-800 text-xs font-bold block">{getReservationDisplayName(r)}</strong>
+                              {r.guestType === "club" && (
+                                <span className="text-xs text-slate-500 font-medium block">
+                                  Ansprechpartner: {[r.firstName, r.lastName].filter(Boolean).join(" ").trim() || r.name || "-"}
+                                </span>
+                              )}
                               <span className="text-xs text-slate-500 font-medium block">
-                                {r.email} · Tel.: {r.phone || "-"} · {r.guests === 10 ? "1 Ganzer Tisch (10 Plätze)" : `${r.guests} Sitzplätze`}
+                                E-Mail: {r.email || "-"} · Tel.: {r.phone || "-"} · {Math.max(1, r.tableCount ?? getReservationTableIds(r).length)} Tisch(e)
                               </span>
                               {r.clubReservationNotes && (
                                 <span className="text-xs text-slate-600 font-medium block rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1">
