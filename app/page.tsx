@@ -5062,31 +5062,6 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Systemverwaltung</h3>
-                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                      Vereine und initiale Vereins-Admins werden zentral in der Systemverwaltung angelegt.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => window.open("/sysadmin", "_blank")}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg transition-colors text-xs uppercase tracking-wider"
-                  >
-                    /sysadmin öffnen
-                  </button>
-                  {clubs.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {clubs.map((club) => (
-                        <span key={club.id} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                          {club.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
                     <div>
