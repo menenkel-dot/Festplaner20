@@ -1263,6 +1263,65 @@ export default function Page() {
     showToast("Benutzerrolle aktualisiert.", "success");
   };
 
+  const handleDeleteUser = async (user: AppUserProfile) => {
+    if (!supabase || !activeClubId) return;
+    if (user.user_id === supabaseUser?.id) {
+      showToast("Du kannst deinen eigenen Benutzer nicht löschen.", "error");
+      return;
+    }
+
+    const label = user.full_name || user.email || "diesen Benutzer";
+    const confirmed = window.confirm(
+      `${label} aus diesem Verein löschen? Wenn der Benutzer keinem anderen Verein zugeordnet ist, wird auch der Login entfernt.`,
+    );
+    if (!confirmed) return;
+
+    setUserAdminLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: {
+          action: "delete",
+          clubId: activeClubId,
+          userId: user.user_id,
+        },
+      });
+      if (error) throw error;
+      await loadUserAdminData();
+      showToast(data?.deletedAuthUser ? "Benutzer und Login wurden gelöscht." : "Benutzer wurde aus dem Verein entfernt.", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Benutzer konnte nicht gelöscht werden.", "error");
+    } finally {
+      setUserAdminLoading(false);
+    }
+  };
+
+  const handleDeleteRole = async (role: AppRole) => {
+    if (!supabase || !activeClubId) return;
+    const usedBy = appUsers.filter((user) => user.role_id === role.id).length;
+    const suffix = usedBy > 0
+      ? ` ${usedBy} Benutzer verlieren dadurch diese Rolle.`
+      : "";
+    const confirmed = window.confirm(`Rolle "${role.name}" löschen?${suffix}`);
+    if (!confirmed) return;
+
+    setUserAdminLoading(true);
+    try {
+      const { error } = await supabase
+        .from("app_roles")
+        .delete()
+        .eq("id", role.id)
+        .eq("club_id", activeClubId);
+      if (error) throw error;
+      if (editingRoleId === role.id) setEditingRoleId(null);
+      await loadUserAdminData();
+      showToast("Rolle wurde gelöscht.", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Rolle konnte nicht gelöscht werden.", "error");
+    } finally {
+      setUserAdminLoading(false);
+    }
+  };
+
   const handleClubChange = (clubId: string) => {
     setActiveClubId(clubId);
     setActiveFestivalId(null);
@@ -5049,13 +5108,24 @@ export default function Page() {
                         <select
                           value={user.role_id ?? ""}
                           onChange={(e) => handleUpdateUserRole(user.user_id, e.target.value)}
-                          className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs"
+                          disabled={userAdminLoading}
+                          className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs disabled:bg-slate-100 disabled:text-slate-400"
                         >
                           <option value="">Keine Rolle</option>
                           {appRoles.map((role) => (
                             <option key={role.id} value={role.id}>{role.name}</option>
                           ))}
                         </select>
+                        <button
+                          type="button"
+                          disabled={userAdminLoading || user.user_id === supabaseUser?.id}
+                          onClick={() => handleDeleteUser(user)}
+                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-50 disabled:bg-slate-100 disabled:text-slate-400"
+                          title={user.user_id === supabaseUser?.id ? "Eigener Benutzer kann nicht gelöscht werden" : "Benutzer löschen"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Löschen
+                        </button>
                       </div>
                     ))}
                     {appUsers.length === 0 && (
@@ -5181,13 +5251,25 @@ export default function Page() {
                                   </div>
                                 )}
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => startEditingRole(role)}
-                                className="self-start border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
-                              >
-                                Bearbeiten
-                              </button>
+                              <div className="flex flex-wrap gap-2 lg:justify-end">
+                                <button
+                                  type="button"
+                                  disabled={userAdminLoading}
+                                  onClick={() => startEditingRole(role)}
+                                  className="self-start border border-slate-200 bg-white hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 text-slate-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
+                                >
+                                  Bearbeiten
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={userAdminLoading}
+                                  onClick={() => handleDeleteRole(role)}
+                                  className="inline-flex items-center gap-1 self-start border border-rose-200 bg-white hover:bg-rose-50 disabled:bg-slate-100 disabled:text-slate-400 text-rose-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Löschen
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>

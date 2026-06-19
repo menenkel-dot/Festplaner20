@@ -1,9 +1,9 @@
-'use client';
+﻿'use client';
 
 import * as React from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
-import { Building2, LogIn, Plus, ShieldCheck, Users } from "lucide-react";
+import { Building2, LogIn, Plus, ShieldCheck, Trash2, Users } from "lucide-react";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 interface ClubRow {
@@ -241,6 +241,39 @@ export default function SysAdminPage() {
       await loadData();
     } catch (error) {
       setMessage(`Logo konnte nicht hochgeladen werden: ${getErrorMessage(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteMember = async (club: ClubRow, member: MembershipRow) => {
+    if (!supabase) return;
+    if (member.user_id === user?.id) {
+      setMessage("Du kannst deinen eigenen Systemadmin-Benutzer nicht löschen.");
+      return;
+    }
+
+    const label = member.profile?.full_name || member.profile?.email || member.user_id;
+    const confirmed = window.confirm(
+      `${label} aus "${club.name}" löschen? Wenn der Benutzer keinem anderen Verein zugeordnet ist, wird auch der Login entfernt.`,
+    );
+    if (!confirmed) return;
+
+    setLoading(true);
+    setMessage("");
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: {
+          action: "delete",
+          clubId: club.id,
+          userId: member.user_id,
+        },
+      });
+      if (error) throw error;
+      setMessage(data?.deletedAuthUser ? `${label} wurde inklusive Login gelöscht.` : `${label} wurde aus ${club.name} entfernt.`);
+      await loadData();
+    } catch (error) {
+      setMessage(`Benutzer konnte nicht gelöscht werden: ${getErrorMessage(error)}`);
     } finally {
       setLoading(false);
     }
@@ -511,12 +544,24 @@ export default function SysAdminPage() {
                     </div>
                     <div className="mt-3 space-y-1">
                       {clubMembers.map((member) => (
-                        <div key={`${member.club_id}-${member.user_id}`} className="flex items-center gap-2 text-xs text-slate-600">
-                          <Users className="h-3.5 w-3.5 text-slate-400" />
-                          <span className="font-semibold">{member.profile?.full_name || member.profile?.email || member.user_id}</span>
-                          <span className="text-slate-400">·</span>
-                          <span>{member.role?.name ?? "Keine Rolle"}</span>
-                          {member.profile?.email && <span className="text-slate-400">({member.profile.email})</span>}
+                        <div key={`${member.club_id}-${member.user_id}`} className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <Users className="h-3.5 w-3.5 text-slate-400" />
+                            <span className="font-semibold">{member.profile?.full_name || member.profile?.email || member.user_id}</span>
+                            <span className="text-slate-400">·</span>
+                            <span>{member.role?.name ?? "Keine Rolle"}</span>
+                            {member.profile?.email && <span className="text-slate-400">({member.profile.email})</span>}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={loading || member.user_id === user.id}
+                            onClick={() => handleDeleteMember(club, member)}
+                            className="inline-flex items-center justify-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-50 disabled:bg-slate-100 disabled:text-slate-400"
+                            title={member.user_id === user.id ? "Eigener Benutzer kann nicht gelöscht werden" : "Benutzer löschen"}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Löschen
+                          </button>
                         </div>
                       ))}
                     </div>
