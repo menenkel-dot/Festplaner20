@@ -25,11 +25,12 @@ Deno.serve(async (req) => {
       throw new Error("Supabase Edge Function secrets are missing.");
     }
 
-    const { shiftId, helperName } = await req.json();
+    const { token, shiftId, helperName } = await req.json();
+    const cleanedToken = String(token ?? "").trim();
     const cleanedName = String(helperName ?? "").trim();
 
-    if (!shiftId || !cleanedName) {
-      return new Response(JSON.stringify({ error: "shiftId and helperName are required" }), {
+    if (!cleanedToken || !shiftId || !cleanedName) {
+      return new Response(JSON.stringify({ error: "token, shiftId and helperName are required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -37,10 +38,28 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
+    const { data: link, error: linkError } = await adminClient
+      .from("public_links")
+      .select("festival_id")
+      .eq("token", cleanedToken)
+      .eq("type", "helper_signup")
+      .eq("enabled", true)
+      .is("revoked_at", null)
+      .maybeSingle();
+
+    if (linkError) throw linkError;
+    if (!link?.festival_id) {
+      return new Response(JSON.stringify({ error: "Public link not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: shift, error: shiftError } = await adminClient
       .from("shifts")
-      .select("id,needed,shift_helpers(helper_name)")
+      .select("id,festival_id,needed,shift_helpers(helper_name)")
       .eq("id", shiftId)
+      .eq("festival_id", link.festival_id)
       .maybeSingle();
 
     if (shiftError) throw shiftError;

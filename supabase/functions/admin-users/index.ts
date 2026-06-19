@@ -5,8 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const userPermissions = ["dashboard", "info", "meetings", "shifts", "reservations", "costs", "users"];
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -39,23 +37,46 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: callerProfile } = await adminClient
-      .from("app_user_profiles")
-      .select("role:app_roles(permissions)")
-      .eq("user_id", caller.id)
-      .maybeSingle();
+    const { email, password, fullName, roleId, clubId } = await req.json();
+    if (!email || !password || !roleId || !clubId) {
+      return new Response(JSON.stringify({ error: "email, password, roleId and clubId are required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const permissions = callerProfile?.role?.permissions ?? userPermissions;
-    if (!permissions.includes("users")) {
+    const [{ data: callerMembership }, { data: systemAdmin }] = await Promise.all([
+      adminClient
+      .from("club_memberships")
+      .select("role:app_roles(permissions)")
+      .eq("club_id", clubId)
+      .eq("user_id", caller.id)
+        .maybeSingle(),
+      adminClient
+        .from("system_admins")
+        .select("user_id")
+        .eq("user_id", caller.id)
+        .maybeSingle(),
+    ]);
+
+    const permissions = callerMembership?.role?.permissions ?? [];
+    if (!systemAdmin && !permissions.includes("users")) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { email, password, fullName, roleId } = await req.json();
-    if (!email || !password || !roleId) {
-      return new Response(JSON.stringify({ error: "email, password and roleId are required" }), {
+    const { data: role, error: roleError } = await adminClient
+      .from("app_roles")
+      .select("id")
+      .eq("id", roleId)
+      .eq("club_id", clubId)
+      .maybeSingle();
+
+    if (roleError) throw roleError;
+    if (!role) {
+      return new Response(JSON.stringify({ error: "Role not found for club" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -77,10 +98,17 @@ Deno.serve(async (req) => {
       user_id: userId,
       email,
       full_name: fullName ?? "",
-      role_id: roleId,
     });
 
     if (profileError) throw profileError;
+
+    const { error: membershipError } = await adminClient.from("club_memberships").upsert({
+      club_id: clubId,
+      user_id: userId,
+      role_id: roleId,
+    });
+
+    if (membershipError) throw membershipError;
 
     return new Response(JSON.stringify({ userId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -93,4 +121,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-

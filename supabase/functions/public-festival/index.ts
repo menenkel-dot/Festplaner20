@@ -19,12 +19,38 @@ Deno.serve(async (req) => {
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const body = req.method === "GET" ? {} : await req.json().catch(() => ({}));
+    const token = String(body.token ?? "").trim();
+    const type = body.type === "guest_reservation" ? "guest_reservation" : "helper_signup";
+
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Public link token is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: link, error: linkError } = await adminClient
+      .from("public_links")
+      .select("festival_id")
+      .eq("token", token)
+      .eq("type", type)
+      .eq("enabled", true)
+      .is("revoked_at", null)
+      .maybeSingle();
+
+    if (linkError) throw linkError;
+    if (!link?.festival_id) {
+      return new Response(JSON.stringify({ error: "Public link not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: festival, error: festivalError } = await adminClient
       .from("festivals")
       .select("id,name,date_label,start_date,end_date,location,description")
-      .order("updated_at", { ascending: false })
-      .limit(1)
+      .eq("id", link.festival_id)
       .maybeSingle();
 
     if (festivalError) throw festivalError;

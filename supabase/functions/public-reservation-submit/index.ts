@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
+    const token = String(body.token ?? "").trim();
     const firstName = String(body.firstName ?? "").trim();
     const lastName = String(body.lastName ?? "").trim();
     const email = String(body.email ?? "").trim();
@@ -74,7 +75,7 @@ Deno.serve(async (req) => {
     const dateLabel = String(body.date ?? "").trim();
     const timeLabel = String(body.time ?? "").trim();
 
-    if (!firstName || !lastName || !email || !phone || !dateLabel || !timeLabel) {
+    if (!token || !firstName || !lastName || !email || !phone || !dateLabel || !timeLabel) {
       return new Response(JSON.stringify({ error: "Pflichtfelder fehlen." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -89,11 +90,27 @@ Deno.serve(async (req) => {
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const { data: link, error: linkError } = await adminClient
+      .from("public_links")
+      .select("festival_id")
+      .eq("token", token)
+      .eq("type", "guest_reservation")
+      .eq("enabled", true)
+      .is("revoked_at", null)
+      .maybeSingle();
+
+    if (linkError) throw linkError;
+    if (!link?.festival_id) {
+      return new Response(JSON.stringify({ error: "Public link not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: festival, error: festivalError } = await adminClient
       .from("festivals")
       .select("id,start_date")
-      .order("updated_at", { ascending: false })
-      .limit(1)
+      .eq("id", link.festival_id)
       .maybeSingle();
 
     if (festivalError) throw festivalError;

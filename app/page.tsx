@@ -14,8 +14,12 @@ import { jsPDF } from "jspdf";
 import type { User } from "@supabase/supabase-js";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
+  type Club,
   type FestPlanerSnapshot,
-  loadLatestFestivalFromSupabase,
+  type PublicLink,
+  loadClubFestivalFromSupabase,
+  loadPublicLinksFromSupabase,
+  loadUserClubsFromSupabase,
   saveActiveFestivalToSupabase,
   saveFinancialItemsToSupabase,
 } from "@/lib/festplaner-supabase";
@@ -474,6 +478,10 @@ export default function Page() {
   const [authLoading, setAuthLoading] = React.useState(false);
   const [authMessage, setAuthMessage] = React.useState("");
   const [syncMessage, setSyncMessage] = React.useState("");
+  const [clubs, setClubs] = React.useState<Club[]>([]);
+  const [activeClubId, setActiveClubId] = React.useState<string | null>(null);
+  const [publicLinks, setPublicLinks] = React.useState<PublicLink[]>([]);
+  const [publicLinkToken, setPublicLinkToken] = React.useState<string>("");
   const [activeFestivalId, setActiveFestivalId] = React.useState<string | null>(null);
   const [authReady, setAuthReady] = React.useState(() => !isSupabaseConfigured());
   const [appRoles, setAppRoles] = React.useState<AppRole[]>([]);
@@ -490,6 +498,7 @@ export default function Page() {
   const [newUserPassword, setNewUserPassword] = React.useState("");
   const [newUserFullName, setNewUserFullName] = React.useState("");
   const [newUserRoleId, setNewUserRoleId] = React.useState("");
+  const [newClubName, setNewClubName] = React.useState("");
   const [userAdminLoading, setUserAdminLoading] = React.useState(false);
   const remoteSyncReadyRef = React.useRef(false);
   const applyingRemoteSnapshotRef = React.useRef(false);
@@ -513,10 +522,14 @@ export default function Page() {
       // Check URL path and legacy query parameters
       const params = new URLSearchParams(window.location.search);
       const modeParam = params.get("mode");
+      const tokenParam = params.get("token") ?? "";
       const path = window.location.pathname.replace(/\/$/, "");
-      if (path === "/helfer" || modeParam === "helfer") {
+      const pathParts = path.split("/").filter(Boolean);
+      const pathToken = pathParts.length >= 2 ? pathParts[1] : "";
+      setPublicLinkToken(tokenParam || pathToken);
+      if (path === "/helfer" || path.startsWith("/helfer/") || modeParam === "helfer") {
         setAppMode("helfer");
-      } else if (path === "/reservierung" || modeParam === "reservierung") {
+      } else if (path === "/reservierung" || path.startsWith("/reservierung/") || modeParam === "reservierung") {
         setAppMode("reservierung");
       } else {
         setAppMode("admin");
@@ -602,6 +615,32 @@ export default function Page() {
     };
   }, [supabase]);
 
+  React.useEffect(() => {
+    if (!supabase || !supabaseUser || !isMounted || appMode !== "admin") return;
+
+    let active = true;
+    loadUserClubsFromSupabase(supabase)
+      .then((loadedClubs) => {
+        if (!active) return;
+        setClubs(loadedClubs);
+        const storedClubId = localStorage.getItem("vfp_active_club_id");
+        const nextClubId = loadedClubs.some((club) => club.id === storedClubId)
+          ? storedClubId
+          : loadedClubs[0]?.id ?? null;
+        setActiveClubId(nextClubId);
+        if (nextClubId) localStorage.setItem("vfp_active_club_id", nextClubId);
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error("Club load failed", error);
+        setSyncMessage("Vereine konnten nicht geladen werden");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [appMode, isMounted, supabase, supabaseUser]);
+
   const saveToStorage = (key: string, data: any) => {
     localStorage.setItem(key, JSON.stringify(data));
   };
@@ -661,7 +700,7 @@ export default function Page() {
   }, []);
 
   React.useEffect(() => {
-    if (!supabase || !supabaseUser || !isMounted) {
+    if (!supabase || !supabaseUser || !isMounted || appMode !== "admin" || !activeClubId) {
       remoteSyncReadyRef.current = false;
       return;
     }
@@ -672,14 +711,14 @@ export default function Page() {
       if (active) setSyncMessage("Lade Planungsdaten...");
     }, 0);
 
-    loadLatestFestivalFromSupabase(supabase, supabaseUser)
+    loadClubFestivalFromSupabase(supabase, activeClubId)
       .then(async (remote) => {
         if (!active) return;
 
         if (remote) {
           const localSnapshot = currentSnapshotRef.current;
           if (localSnapshot && hasMeaningfulPlanData(localSnapshot) && !hasMeaningfulPlanData(remote.snapshot)) {
-            const festivalId = await saveActiveFestivalToSupabase(supabase, supabaseUser, localSnapshot, remote.festivalId);
+            const festivalId = await saveActiveFestivalToSupabase(supabase, supabaseUser, localSnapshot, activeClubId, remote.festivalId);
             if (!active) return;
             setActiveFestivalId(festivalId);
             localStorage.setItem("vfp_active_festival_id", festivalId);
@@ -697,7 +736,7 @@ export default function Page() {
 
         const snapshot = currentSnapshotRef.current;
         if (!snapshot) return;
-        const festivalId = await saveActiveFestivalToSupabase(supabase, supabaseUser, snapshot);
+        const festivalId = await saveActiveFestivalToSupabase(supabase, supabaseUser, snapshot, activeClubId);
         if (!active) return;
         setActiveFestivalId(festivalId);
         localStorage.setItem("vfp_active_festival_id", festivalId);
@@ -717,10 +756,10 @@ export default function Page() {
       active = false;
       clearTimeout(messageTimer);
     };
-  }, [applyRemoteSnapshot, isMounted, supabase, supabaseUser]);
+  }, [activeClubId, appMode, applyRemoteSnapshot, isMounted, supabase, supabaseUser]);
 
   React.useEffect(() => {
-    if (!supabase || !supabaseUser || !remoteSyncReadyRef.current || applyingRemoteSnapshotRef.current) return;
+    if (!supabase || !supabaseUser || !activeClubId || !remoteSyncReadyRef.current || applyingRemoteSnapshotRef.current) return;
 
     const snapshot = getCurrentSnapshot();
     const payload = JSON.stringify(snapshot);
@@ -736,7 +775,7 @@ export default function Page() {
               finances: snapshot.finances,
               budget: snapshot.budget,
             }).then(() => activeFestivalId)
-          : saveActiveFestivalToSupabase(supabase, supabaseUser, snapshot, activeFestivalId);
+          : saveActiveFestivalToSupabase(supabase, supabaseUser, snapshot, activeClubId, activeFestivalId);
 
       savePromise
         .then((festivalId) => {
@@ -754,7 +793,7 @@ export default function Page() {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [activeFestivalId, currentPermissions, getCurrentSnapshot, supabase, supabaseUser]);
+  }, [activeClubId, activeFestivalId, currentPermissions, getCurrentSnapshot, supabase, supabaseUser]);
 
   const hasPermission = (permission: string) => {
     return currentPermissions.includes(permission);
@@ -799,20 +838,24 @@ export default function Page() {
   };
 
   const loadUserAdminData = React.useCallback(async () => {
-    if (!supabase || !supabaseUser) return;
+    if (!supabase || !supabaseUser || !activeClubId) return;
 
-    const [rolesResult, usersResult, currentProfileResult] = await Promise.all([
-      supabase.from("app_roles").select("id,name,description,permissions").order("name"),
-      supabase.from("app_user_profiles").select("user_id,email,full_name,role_id").order("created_at", { ascending: false }),
+    const [rolesResult, membershipsResult, profilesResult, currentProfileResult, linksResult] = await Promise.all([
+      supabase.from("app_roles").select("id,name,description,permissions").eq("club_id", activeClubId).order("name"),
+      supabase.from("club_memberships").select("user_id,role_id,created_at").eq("club_id", activeClubId).order("created_at", { ascending: false }),
+      supabase.from("app_user_profiles").select("user_id,email,full_name").order("created_at", { ascending: false }),
       supabase
-        .from("app_user_profiles")
+        .from("club_memberships")
         .select("role:app_roles(name,permissions)")
+        .eq("club_id", activeClubId)
         .eq("user_id", supabaseUser.id)
         .maybeSingle(),
+      loadPublicLinksFromSupabase(supabase, activeClubId),
     ]);
 
     if (rolesResult.error) throw rolesResult.error;
-    if (usersResult.error) throw usersResult.error;
+    if (membershipsResult.error) throw membershipsResult.error;
+    if (profilesResult.error) throw profilesResult.error;
 
     const roles = (rolesResult.data ?? []).map((role) => ({
       id: String(role.id),
@@ -821,13 +864,18 @@ export default function Page() {
       permissions: Array.isArray(role.permissions) ? role.permissions.map(String) : [],
     }));
     setAppRoles(roles);
-    setAppUsers((usersResult.data ?? []).map((user) => ({
-      user_id: String(user.user_id),
-      email: String(user.email),
-      full_name: String(user.full_name ?? ""),
-      role_id: user.role_id ? String(user.role_id) : null,
-    })));
+    const profilesById = new Map((profilesResult.data ?? []).map((profile) => [String(profile.user_id), profile]));
+    setAppUsers((membershipsResult.data ?? []).map((membership) => {
+      const profile = profilesById.get(String(membership.user_id));
+      return {
+        user_id: String(membership.user_id),
+        email: String(profile?.email ?? ""),
+        full_name: String(profile?.full_name ?? ""),
+        role_id: membership.role_id ? String(membership.role_id) : null,
+      };
+    }));
     setNewUserRoleId((current) => current || roles[0]?.id || "");
+    setPublicLinks(linksResult);
 
     const profileRole = (currentProfileResult.data as any)?.role;
     const profilePermissions = profileRole?.permissions;
@@ -836,10 +884,10 @@ export default function Page() {
       : Array.isArray(profilePermissions) && profilePermissions.length
         ? profilePermissions.map(String)
         : ADMIN_PERMISSION_IDS);
-  }, [supabase, supabaseUser]);
+  }, [activeClubId, supabase, supabaseUser]);
 
   React.useEffect(() => {
-    if (!supabaseUser) return;
+    if (!supabaseUser || !activeClubId) return;
     const timer = setTimeout(() => {
       loadUserAdminData().catch((error) => {
         console.error("User admin data failed", error);
@@ -847,7 +895,16 @@ export default function Page() {
       });
     }, 0);
     return () => clearTimeout(timer);
-  }, [loadUserAdminData, supabaseUser]);
+  }, [activeClubId, loadUserAdminData, supabaseUser]);
+
+  React.useEffect(() => {
+    if (!supabase || !activeClubId || !activeFestivalId || appMode !== "admin") return;
+    loadPublicLinksFromSupabase(supabase, activeClubId)
+      .then(setPublicLinks)
+      .catch((error) => {
+        console.error("Public links load failed", error);
+      });
+  }, [activeClubId, activeFestivalId, appMode, supabase]);
 
   React.useEffect(() => {
     if (currentPermissions.includes(activeTab)) return;
@@ -859,13 +916,24 @@ export default function Page() {
 
   React.useEffect(() => {
     if (!supabase || !isMounted || (appMode !== "helfer" && appMode !== "reservierung")) return;
+    if (!publicLinkToken) {
+      const toastTimer = window.setTimeout(() => {
+        showToast("Dieser öffentliche Link ist ungültig oder unvollständig.", "error");
+      }, 0);
+      return () => window.clearTimeout(toastTimer);
+    }
 
     let active = true;
     const loadingTimer = setTimeout(() => {
       if (active) setPublicPortalLoading(true);
     }, 0);
 
-    supabase.functions.invoke("public-festival")
+    supabase.functions.invoke("public-festival", {
+      body: {
+        token: publicLinkToken,
+        type: appMode === "helfer" ? "helper_signup" : "guest_reservation",
+      },
+    })
       .then(({ data, error }) => {
         if (!active) return;
         if (error) throw error;
@@ -899,7 +967,7 @@ export default function Page() {
       active = false;
       clearTimeout(loadingTimer);
     };
-  }, [appMode, isMounted, supabase]);
+  }, [appMode, isMounted, publicLinkToken, supabase]);
 
   const getDayConfigByName = (dayName: string) => {
     return (festInfo.daysConfig || []).find((day) => day.name === dayName);
@@ -1052,6 +1120,9 @@ export default function Page() {
     if (!supabase) return;
     await supabase.auth.signOut();
     setSupabaseUser(null);
+    setClubs([]);
+    setActiveClubId(null);
+    setPublicLinks([]);
     setActiveFestivalId(null);
     setSyncMessage("");
     remoteSyncReadyRef.current = false;
@@ -1059,13 +1130,73 @@ export default function Page() {
     showToast("Von Supabase abgemeldet.", "info");
   };
 
+  const handleCreateClub = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !supabaseUser || !newClubName.trim()) return;
+    setUserAdminLoading(true);
+    try {
+      const clubName = newClubName.trim();
+      const baseSlug = clubName
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "verein";
+      const slug = `${baseSlug}-${Number(new Date()).toString(36)}`;
+
+      const { data: club, error: clubError } = await supabase
+        .from("clubs")
+        .insert({ name: clubName, slug, created_by: supabaseUser.id })
+        .select("id,name,slug,status")
+        .single();
+      if (clubError) throw clubError;
+
+      const { data: role, error: roleError } = await supabase
+        .from("app_roles")
+        .insert({
+          club_id: club.id,
+          name: "Admin",
+          description: "Voller Zugriff auf diesen Verein",
+          permissions: FULL_ADMIN_PERMISSION_IDS,
+        })
+        .select("id")
+        .single();
+      if (roleError) throw roleError;
+
+      const { error: profileError } = await supabase.from("app_user_profiles").upsert({
+        user_id: supabaseUser.id,
+        email: supabaseUser.email ?? "",
+        full_name: String(supabaseUser.user_metadata?.full_name ?? ""),
+      });
+      if (profileError) throw profileError;
+
+      const { error: membershipError } = await supabase.from("club_memberships").upsert({
+        club_id: club.id,
+        user_id: supabaseUser.id,
+        role_id: role.id,
+      });
+      if (membershipError) throw membershipError;
+
+      const loadedClubs = await loadUserClubsFromSupabase(supabase);
+      setClubs(loadedClubs);
+      setNewClubName("");
+      handleClubChange(String(club.id));
+      showToast("Verein wurde angelegt.", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Verein konnte nicht angelegt werden.", "error");
+    } finally {
+      setUserAdminLoading(false);
+    }
+  };
+
   const handleCreateRole = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase || !newRoleName.trim()) return;
+    if (!supabase || !activeClubId || !newRoleName.trim()) return;
     setUserAdminLoading(true);
     try {
       const roleName = newRoleName.trim();
       const { error } = await supabase.from("app_roles").insert({
+        club_id: activeClubId,
         name: roleName,
         description: newRoleDescription.trim(),
         permissions: roleName.toLowerCase() === "admin" ? FULL_ADMIN_PERMISSION_IDS : newRolePermissions,
@@ -1118,7 +1249,7 @@ export default function Page() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase || !newUserEmail.trim() || !newUserPassword || !newUserRoleId) return;
+    if (!supabase || !activeClubId || !newUserEmail.trim() || !newUserPassword || !newUserRoleId) return;
     setUserAdminLoading(true);
     try {
       const { error } = await supabase.functions.invoke("admin-users", {
@@ -1127,6 +1258,7 @@ export default function Page() {
           password: newUserPassword,
           fullName: newUserFullName.trim(),
           roleId: newUserRoleId,
+          clubId: activeClubId,
         },
       });
       if (error) throw error;
@@ -1143,8 +1275,12 @@ export default function Page() {
   };
 
   const handleUpdateUserRole = async (userId: string, roleId: string) => {
-    if (!supabase) return;
-    const { error } = await supabase.from("app_user_profiles").update({ role_id: roleId }).eq("user_id", userId);
+    if (!supabase || !activeClubId) return;
+    const { error } = await supabase
+      .from("club_memberships")
+      .update({ role_id: roleId || null })
+      .eq("club_id", activeClubId)
+      .eq("user_id", userId);
     if (error) {
       showToast(error.message, "error");
       return;
@@ -1153,10 +1289,65 @@ export default function Page() {
     showToast("Benutzerrolle aktualisiert.", "success");
   };
 
+  const handleClubChange = (clubId: string) => {
+    setActiveClubId(clubId);
+    setActiveFestivalId(null);
+    setPublicLinks([]);
+    remoteSyncReadyRef.current = false;
+    lastSyncedPayloadRef.current = "";
+    localStorage.setItem("vfp_active_club_id", clubId);
+    localStorage.removeItem("vfp_active_festival_id");
+    setSyncMessage("Wechsle Verein...");
+  };
+
+  const regeneratePublicLink = async (type: "helper_signup" | "guest_reservation") => {
+    if (!supabase || !activeClubId || !activeFestivalId) return;
+    setUserAdminLoading(true);
+    try {
+      const activeLinks = publicLinks.filter((link) => link.type === type && link.enabled);
+      for (const link of activeLinks) {
+        const { error } = await supabase
+          .from("public_links")
+          .update({ enabled: false, revoked_at: new Date().toISOString() })
+          .eq("id", link.id);
+        if (error) throw error;
+      }
+
+      const { error } = await supabase.from("public_links").insert({
+        club_id: activeClubId,
+        festival_id: activeFestivalId,
+        type,
+      });
+      if (error) throw error;
+      setPublicLinks(await loadPublicLinksFromSupabase(supabase, activeClubId));
+      showToast("Öffentlicher Link wurde neu generiert.", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Link konnte nicht neu generiert werden.", "error");
+    } finally {
+      setUserAdminLoading(false);
+    }
+  };
+
+  const setPublicLinkEnabled = async (link: PublicLink, enabled: boolean) => {
+    if (!supabase || !activeClubId) return;
+    const { error } = await supabase
+      .from("public_links")
+      .update({ enabled, revoked_at: enabled ? null : new Date().toISOString() })
+      .eq("id", link.id);
+    if (error) {
+      showToast(error.message, "error");
+      return;
+    }
+    setPublicLinks(await loadPublicLinksFromSupabase(supabase, activeClubId));
+    showToast(enabled ? "Link aktiviert." : "Link deaktiviert.", "success");
+  };
+
   // --- Copy Link Generator Utility ---
   const getShareableLink = (mode: "helfer" | "reservierung") => {
     if (typeof window !== "undefined") {
-      return `${window.location.origin}/${mode}`;
+      const type = mode === "helfer" ? "helper_signup" : "guest_reservation";
+      const token = publicLinks.find((link) => link.type === type && link.enabled)?.token;
+      return token ? `${window.location.origin}/${mode}/${token}` : `${window.location.origin}/${mode}`;
     }
     return `/${mode}`;
   };
@@ -1784,9 +1975,14 @@ export default function Page() {
     }
 
     if (supabase) {
+      if (!publicLinkToken) {
+        showToast("Dieser öffentliche Link ist ungültig oder unvollständig.", "error");
+        return;
+      }
       setPublicPortalLoading(true);
       const { error } = await supabase.functions.invoke("public-helper-signup", {
         body: {
+          token: publicLinkToken,
           shiftId: publicSelectedShiftId,
           helperName: publicHelperName.trim(),
         },
@@ -1860,9 +2056,14 @@ export default function Page() {
     const displayName = publicResGuestType === "club" ? publicResClubName.trim() : `${publicResFirstName.trim()} ${publicResLastName.trim()}`;
 
     if (supabase) {
+      if (!publicLinkToken) {
+        showToast("Dieser öffentliche Link ist ungültig oder unvollständig.", "error");
+        return;
+      }
       setPublicPortalLoading(true);
       const { error } = await supabase.functions.invoke("public-reservation-submit", {
         body: {
+          token: publicLinkToken,
           firstName: publicResFirstName.trim(),
           lastName: publicResLastName.trim(),
           email: publicResEmail.trim(),
@@ -2870,6 +3071,29 @@ export default function Page() {
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-3 pb-2">
             PLANUNGSTOOLS
           </div>
+
+          {clubs.length > 0 && (
+            <div className="pb-3">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 pl-3">
+                Verein
+              </label>
+              <select
+                value={activeClubId ?? ""}
+                onChange={(e) => handleClubChange(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+              >
+                {clubs.map((club) => (
+                  <option key={club.id} value={club.id}>{club.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {supabaseUser && clubs.length === 0 && (
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-normal text-amber-800">
+              Kein Verein zugeordnet. Ein System-Admin muss diesen Benutzer einem Verein zuweisen.
+            </div>
+          )}
 
           <button
             onClick={() => openTab("dashboard")}
@@ -4595,6 +4819,106 @@ export default function Page() {
                       </p>
                     </div>
                   </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Öffentliche Links</h3>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      Diese Links sind an den aktuell ausgewählten Verein gebunden. Bei neuer Generierung werden alte Links ungültig.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      { type: "helper_signup" as const, mode: "helfer" as const, label: "Helfer-Anmeldung" },
+                      { type: "guest_reservation" as const, mode: "reservierung" as const, label: "Gäste-Reservierung" },
+                    ].map((item) => {
+                      const link = publicLinks.find((entry) => entry.type === item.type && entry.enabled);
+                      const url = getShareableLink(item.mode);
+                      return (
+                        <div key={item.type} className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-bold text-slate-800">{item.label}</p>
+                              <p className="text-[10px] text-slate-500 break-all mt-1">{link ? url : "Noch kein aktiver Link vorhanden."}</p>
+                            </div>
+                            <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${link ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-slate-100 text-slate-500 border border-slate-200"}`}>
+                              {link ? "Aktiv" : "Inaktiv"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={!link}
+                              onClick={() => copyLink(item.mode)}
+                              className="border border-slate-200 bg-white hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 text-slate-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
+                            >
+                              Kopieren
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!link}
+                              onClick={() => window.open(url, "_blank")}
+                              className="border border-slate-200 bg-white hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 text-slate-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
+                            >
+                              Öffnen
+                            </button>
+                            {link && (
+                              <button
+                                type="button"
+                                onClick={() => setPublicLinkEnabled(link, false)}
+                                className="border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
+                              >
+                                Deaktivieren
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={userAdminLoading || !activeFestivalId}
+                              onClick={() => regeneratePublicLink(item.type)}
+                              className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
+                            >
+                              Neu generieren
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vereine verwalten</h3>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      Neue Vereine können nur von System-Admins angelegt werden. Der anlegende Benutzer wird direkt Admin im neuen Verein.
+                    </p>
+                  </div>
+                  <form onSubmit={handleCreateClub} className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      placeholder="Neuer Vereinsname"
+                      value={newClubName}
+                      onChange={(e) => setNewClubName(e.target.value)}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={userAdminLoading || !newClubName.trim()}
+                      className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold px-4 py-2 rounded-lg transition-colors text-xs uppercase tracking-wider"
+                    >
+                      Verein anlegen
+                    </button>
+                  </form>
+                  {clubs.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {clubs.map((club) => (
+                        <span key={club.id} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                          {club.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

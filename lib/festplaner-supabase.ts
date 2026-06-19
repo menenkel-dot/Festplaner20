@@ -25,8 +25,23 @@ export interface FinanceSnapshot {
   budget: number;
 }
 
+export interface Club {
+  id: string;
+  name: string;
+  slug: string;
+  status: "active" | "inactive";
+}
+
+export interface PublicLink {
+  id: string;
+  type: "helper_signup" | "guest_reservation";
+  token: string;
+  enabled: boolean;
+}
+
 interface FestivalRow {
   id: string;
+  club_id: string;
   name: string;
   date_label: string;
   start_date: string | null;
@@ -34,6 +49,39 @@ interface FestivalRow {
   location: string;
   description: string;
   budget: number | string;
+}
+
+export async function loadUserClubsFromSupabase(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from("clubs")
+    .select("id,name,slug,status")
+    .eq("status", "active")
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map((club) => ({
+    id: String(club.id),
+    name: String(club.name),
+    slug: String(club.slug),
+    status: club.status === "inactive" ? "inactive" : "active",
+  })) satisfies Club[];
+}
+
+export async function loadPublicLinksFromSupabase(supabase: SupabaseClient, clubId: string) {
+  const { data, error } = await supabase
+    .from("public_links")
+    .select("id,type,token,enabled")
+    .eq("club_id", clubId)
+    .is("revoked_at", null)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []).map((link) => ({
+    id: String(link.id),
+    type: link.type === "guest_reservation" ? "guest_reservation" : "helper_signup",
+    token: String(link.token),
+    enabled: Boolean(link.enabled),
+  })) satisfies PublicLink[];
 }
 
 function mapReservationStatus(status: string) {
@@ -234,6 +282,7 @@ export async function saveActiveFestivalToSupabase(
   supabase: SupabaseClient,
   user: User,
   snapshot: FestPlanerSnapshot,
+  clubId: string,
   festivalId?: string | null,
 ) {
   let activeFestivalId = festivalId;
@@ -242,7 +291,7 @@ export async function saveActiveFestivalToSupabase(
     const { data: existing, error: existingError } = await supabase
       .from("festivals")
       .select("id")
-      .eq("owner_id", user.id)
+      .eq("club_id", clubId)
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle<{ id: string }>();
@@ -273,6 +322,7 @@ export async function saveActiveFestivalToSupabase(
       .from("festivals")
       .insert({
         owner_id: user.id,
+        club_id: clubId,
         ...festivalPayload,
       })
       .select("id")
@@ -284,7 +334,31 @@ export async function saveActiveFestivalToSupabase(
   }
 
   await replaceFestivalChildren(supabase, activeFestivalId, snapshot);
+  await ensurePublicLinksForFestival(supabase, clubId, activeFestivalId);
   return activeFestivalId;
+}
+
+async function ensurePublicLinksForFestival(supabase: SupabaseClient, clubId: string, festivalId: string) {
+  for (const type of ["helper_signup", "guest_reservation"] as const) {
+    const { data: existing, error: existingError } = await supabase
+      .from("public_links")
+      .select("id")
+      .eq("festival_id", festivalId)
+      .eq("type", type)
+      .eq("enabled", true)
+      .is("revoked_at", null)
+      .maybeSingle<{ id: string }>();
+
+    if (existingError) continue;
+    if (existing) continue;
+
+    const { error } = await supabase.from("public_links").insert({
+      club_id: clubId,
+      festival_id: festivalId,
+      type,
+    });
+    if (error) continue;
+  }
 }
 
 export async function saveFinancialItemsToSupabase(
@@ -329,11 +403,13 @@ export async function importSnapshotToSupabase(
   supabase: SupabaseClient,
   user: User,
   snapshot: FestPlanerSnapshot,
+  clubId: string,
 ) {
   const { data: festival, error: festivalError } = await supabase
     .from("festivals")
     .insert({
       owner_id: user.id,
+      club_id: clubId,
       name: snapshot.festInfo.name,
       date_label: snapshot.festInfo.date,
       start_date: snapshot.festInfo.startDate || null,
@@ -350,17 +426,19 @@ export async function importSnapshotToSupabase(
 
   const festivalId = festival.id as string;
   await replaceFestivalChildren(supabase, festivalId, snapshot);
+  await ensurePublicLinksForFestival(supabase, clubId, festivalId);
 
   return festivalId;
 }
 
-export async function loadLatestFestivalFromSupabase(
+export async function loadClubFestivalFromSupabase(
   supabase: SupabaseClient,
-  user: User,
+  clubId: string,
 ) {
   const { data: festival, error: festivalError } = await supabase
     .from("festivals")
-    .select("id,name,date_label,start_date,end_date,location,description,budget")
+    .select("id,club_id,name,date_label,start_date,end_date,location,description,budget")
+    .eq("club_id", clubId)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle<FestivalRow>();
@@ -517,6 +595,7 @@ export async function loadLatestFestivalFromSupabase(
 
   return {
     festivalId: festival.id,
+    clubId: festival.club_id,
     snapshot,
   };
 }

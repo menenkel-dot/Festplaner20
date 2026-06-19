@@ -26,8 +26,16 @@ const nextConfig: NextConfig = {
         destination: '/?mode=helfer',
       },
       {
+        source: '/helfer/:token',
+        destination: '/?mode=helfer&token=:token',
+      },
+      {
         source: '/reservierung',
         destination: '/?mode=reservierung',
+      },
+      {
+        source: '/reservierung/:token',
+        destination: '/?mode=reservierung&token=:token',
       },
     ];
   },
