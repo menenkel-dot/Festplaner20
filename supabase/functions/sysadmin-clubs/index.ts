@@ -33,6 +33,27 @@ const slugify = (value: string) => {
   return normalized || "verein";
 };
 
+const allowedLogoTypes = new Map([
+  ["image/png", "png"],
+  ["image/jpeg", "jpg"],
+  ["image/webp", "webp"],
+  ["image/svg+xml", "svg"],
+]);
+
+const getPublicLogoUrl = (supabaseUrl: string, path?: string | null) => {
+  if (!path) return "";
+  return `${supabaseUrl}/storage/v1/object/public/club-logos/${encodeURIComponent(path).replace(/%2F/g, "/")}`;
+};
+
+const parseDataUrl = (value: string) => {
+  const match = value.match(/^data:([^;,]+);base64,(.+)$/);
+  if (!match) return null;
+  return {
+    mimeType: match[1],
+    bytes: Uint8Array.from(atob(match[2]), (char) => char.charCodeAt(0)),
+  };
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -152,6 +173,142 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "set_status") {
+      const clubId = String(body.clubId ?? "");
+      const status = body.status === "inactive" ? "inactive" : "active";
+
+      if (!clubId) {
+        return new Response(JSON.stringify({ error: "clubId is required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error } = await adminClient
+        .from("clubs")
+        .update({ status })
+        .eq("id", clubId);
+
+      if (error) throw error;
+
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (action === "delete") {
+      const clubId = String(body.clubId ?? "");
+      const confirmName = String(body.confirmName ?? "").trim();
+
+      const { data: club, error: clubLookupError } = await adminClient
+        .from("clubs")
+        .select("id,name,logo_path")
+        .eq("id", clubId)
+        .maybeSingle();
+
+      if (clubLookupError) throw clubLookupError;
+      if (!club) {
+        return new Response(JSON.stringify({ error: "Club not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (confirmName !== club.name) {
+        return new Response(JSON.stringify({ error: "Confirmation name does not match" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: logoObjects } = await adminClient.storage
+        .from("club-logos")
+        .list(`clubs/${club.id}`, { limit: 100 });
+      const logoPaths = (logoObjects ?? []).map((item) => `clubs/${club.id}/${item.name}`);
+      if (logoPaths.length > 0) {
+        await adminClient.storage.from("club-logos").remove(logoPaths);
+      }
+
+      const { error: deleteError } = await adminClient
+        .from("clubs")
+        .delete()
+        .eq("id", club.id);
+
+      if (deleteError) throw deleteError;
+
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (action === "upload_logo") {
+      const clubId = String(body.clubId ?? "");
+      const logoDataUrl = String(body.logoDataUrl ?? "");
+      const parsedLogo = parseDataUrl(logoDataUrl);
+
+      if (!clubId || !parsedLogo) {
+        return new Response(JSON.stringify({ error: "clubId and logoDataUrl are required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const extension = allowedLogoTypes.get(parsedLogo.mimeType);
+      if (!extension) {
+        return new Response(JSON.stringify({ error: "Unsupported logo type" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (parsedLogo.bytes.byteLength > 2 * 1024 * 1024) {
+        return new Response(JSON.stringify({ error: "Logo must be 2 MB or smaller" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: club, error: clubLookupError } = await adminClient
+        .from("clubs")
+        .select("id,logo_path")
+        .eq("id", clubId)
+        .maybeSingle();
+
+      if (clubLookupError) throw clubLookupError;
+      if (!club) {
+        return new Response(JSON.stringify({ error: "Club not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (club.logo_path) {
+        await adminClient.storage.from("club-logos").remove([club.logo_path]);
+      }
+
+      const logoPath = `clubs/${clubId}/logo-${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await adminClient.storage
+        .from("club-logos")
+        .upload(logoPath, parsedLogo.bytes, {
+          contentType: parsedLogo.mimeType,
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { error: updateError } = await adminClient
+        .from("clubs")
+        .update({ logo_path: logoPath, logo_updated_at: new Date().toISOString() })
+        .eq("id", clubId);
+
+      if (updateError) throw updateError;
+
+      return new Response(JSON.stringify({ logoPath, logoUrl: getPublicLogoUrl(supabaseUrl, logoPath) }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const [
       { data: clubs, error: clubsError },
       { data: memberships, error: membershipsError },
@@ -160,7 +317,7 @@ Deno.serve(async (req) => {
     ] = await Promise.all([
       adminClient
         .from("clubs")
-        .select("id,name,slug,status,created_at")
+        .select("id,name,slug,status,logo_path,logo_updated_at,created_at")
         .order("created_at", { ascending: false }),
       adminClient
         .from("club_memberships")
@@ -188,7 +345,12 @@ Deno.serve(async (req) => {
       role: membership.role_id ? rolesById.get(String(membership.role_id)) ?? null : null,
     }));
 
-    return new Response(JSON.stringify({ clubs: clubs ?? [], memberships: enrichedMemberships }), {
+    const enrichedClubs = (clubs ?? []).map((club) => ({
+      ...club,
+      logoUrl: getPublicLogoUrl(supabaseUrl, club.logo_path),
+    }));
+
+    return new Response(JSON.stringify({ clubs: enrichedClubs, memberships: enrichedMemberships }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

@@ -11,6 +11,8 @@ interface ClubRow {
   name: string;
   slug: string;
   status: string;
+  logo_path?: string | null;
+  logoUrl?: string;
   created_at: string;
 }
 
@@ -55,6 +57,7 @@ export default function SysAdminPage() {
   const [adminFullName, setAdminFullName] = React.useState("");
   const [adminEmail, setAdminEmail] = React.useState("");
   const [adminPassword, setAdminPassword] = React.useState("");
+  const [deleteConfirmByClub, setDeleteConfirmByClub] = React.useState<Record<string, string>>({});
 
   const loadData = React.useCallback(async () => {
     if (!supabase || !user) return;
@@ -161,6 +164,76 @@ export default function SysAdminPage() {
       await loadData();
     } catch (error) {
       setMessage(`Verein konnte nicht angelegt werden: ${getErrorMessage(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const invokeSysadminAction = async (body: Record<string, unknown>, successMessage: string) => {
+    if (!supabase) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const { error } = await supabase.functions.invoke("sysadmin-clubs", { body });
+      if (error) throw error;
+      setMessage(successMessage);
+      await loadData();
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetStatus = (club: ClubRow, status: "active" | "inactive") => {
+    invokeSysadminAction(
+      { action: "set_status", clubId: club.id, status },
+      status === "active" ? `${club.name} wurde reaktiviert.` : `${club.name} wurde deaktiviert.`,
+    );
+  };
+
+  const handleDeleteClub = (club: ClubRow) => {
+    invokeSysadminAction(
+      { action: "delete", clubId: club.id, confirmName: deleteConfirmByClub[club.id] ?? "" },
+      `${club.name} wurde endgültig gelöscht.`,
+    );
+  };
+
+  const handleLogoUpload = async (club: ClubRow, file: File | null) => {
+    if (!file || !supabase) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setMessage("Logo darf maximal 2 MB groß sein.");
+      return;
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
+    if (!allowedTypes.includes(file.type)) {
+      setMessage("Bitte PNG, JPG, WebP oder SVG hochladen.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+    try {
+      const logoDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () => reject(new Error("Logo konnte nicht gelesen werden."));
+        reader.readAsDataURL(file);
+      });
+
+      const { error } = await supabase.functions.invoke("sysadmin-clubs", {
+        body: {
+          action: "upload_logo",
+          clubId: club.id,
+          logoDataUrl,
+        },
+      });
+      if (error) throw error;
+      setMessage(`Logo für ${club.name} wurde hochgeladen.`);
+      await loadData();
+    } catch (error) {
+      setMessage(`Logo konnte nicht hochgeladen werden: ${getErrorMessage(error)}`);
     } finally {
       setLoading(false);
     }
@@ -345,12 +418,75 @@ export default function SysAdminPage() {
                   <div key={club.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                       <div>
-                        <p className="text-sm font-bold text-slate-900">{club.name}</p>
-                        <p className="text-[11px] text-slate-500">Slug: {club.slug} · Status: {club.status}</p>
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-12 w-16 items-center justify-center rounded-lg border border-slate-200 bg-white p-1">
+                            {club.logoUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={club.logoUrl} alt={`${club.name} Logo`} className="max-h-full max-w-full object-contain" />
+                            ) : (
+                              <Building2 className="h-5 w-5 text-slate-300" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-900">{club.name}</p>
+                            <p className="text-[11px] text-slate-500">Slug: {club.slug} · Status: {club.status}</p>
+                          </div>
+                        </div>
                       </div>
                       <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                         {clubMembers.length} Benutzer
                       </span>
+                    </div>
+                    <div className="mt-4 grid gap-2 border-t border-slate-200 pt-3 md:grid-cols-[1fr_auto_auto] md:items-center">
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Logo hochladen</span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                          disabled={loading}
+                          onChange={(event) => {
+                            handleLogoUpload(club, event.target.files?.[0] ?? null);
+                            event.currentTarget.value = "";
+                          }}
+                          className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-xs file:font-bold file:uppercase file:tracking-wider file:text-white"
+                        />
+                      </label>
+                      {club.status === "inactive" ? (
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => handleSetStatus(club, "active")}
+                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700 hover:bg-emerald-100 disabled:text-slate-400"
+                        >
+                          Reaktivieren
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => handleSetStatus(club, "inactive")}
+                          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-amber-700 hover:bg-amber-100 disabled:text-slate-400"
+                        >
+                          Deaktivieren
+                        </button>
+                      )}
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder={`Zum Löschen: ${club.name}`}
+                          value={deleteConfirmByClub[club.id] ?? ""}
+                          onChange={(event) => setDeleteConfirmByClub((current) => ({ ...current, [club.id]: event.target.value }))}
+                          className="min-w-0 rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-rose-500"
+                        />
+                        <button
+                          type="button"
+                          disabled={loading || (deleteConfirmByClub[club.id] ?? "") !== club.name}
+                          onClick={() => handleDeleteClub(club)}
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-100 disabled:bg-slate-100 disabled:text-slate-400"
+                        >
+                          Endgültig löschen
+                        </button>
+                      </div>
                     </div>
                     <div className="mt-3 space-y-1">
                       {clubMembers.map((member) => (

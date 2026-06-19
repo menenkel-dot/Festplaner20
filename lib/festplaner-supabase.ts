@@ -30,6 +30,8 @@ export interface Club {
   name: string;
   slug: string;
   status: "active" | "inactive";
+  logo_path?: string | null;
+  logoUrl?: string;
 }
 
 export interface PublicLink {
@@ -51,10 +53,16 @@ interface FestivalRow {
   budget: number | string;
 }
 
+function getClubLogoUrl(path?: string | null) {
+  if (!path || !process.env.NEXT_PUBLIC_SUPABASE_URL) return "";
+  const encodedPath = encodeURIComponent(path).replace(/%2F/g, "/");
+  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/club-logos/${encodedPath}`;
+}
+
 export async function loadUserClubsFromSupabase(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from("clubs")
-    .select("id,name,slug,status")
+    .select("id,name,slug,status,logo_path")
     .eq("status", "active")
     .order("name", { ascending: true });
 
@@ -64,6 +72,8 @@ export async function loadUserClubsFromSupabase(supabase: SupabaseClient) {
     name: String(club.name),
     slug: String(club.slug),
     status: club.status === "inactive" ? "inactive" : "active",
+    logo_path: club.logo_path ? String(club.logo_path) : null,
+    logoUrl: getClubLogoUrl(club.logo_path ? String(club.logo_path) : null),
   })) satisfies Club[];
 }
 
@@ -446,6 +456,12 @@ export async function loadClubFestivalFromSupabase(
   if (festivalError) throw festivalError;
   if (!festival) return null;
 
+  const { data: club } = await supabase
+    .from("clubs")
+    .select("logo_path")
+    .eq("id", clubId)
+    .maybeSingle<{ logo_path: string | null }>();
+
   const [
     daysResult,
     programResult,
@@ -596,6 +612,7 @@ export async function loadClubFestivalFromSupabase(
   return {
     festivalId: festival.id,
     clubId: festival.club_id,
+    clubLogoUrl: getClubLogoUrl(club?.logo_path ?? null),
     snapshot,
   };
 }

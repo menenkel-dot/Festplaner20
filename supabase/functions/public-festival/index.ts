@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
 
     const { data: link, error: linkError } = await adminClient
       .from("public_links")
-      .select("festival_id")
+      .select("festival_id,club_id")
       .eq("token", token)
       .eq("type", type)
       .eq("enabled", true)
@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
     const { data: festival, error: festivalError } = await adminClient
       .from("festivals")
-      .select("id,name,date_label,start_date,end_date,location,description")
+      .select("id,club_id,name,date_label,start_date,end_date,location,description")
       .eq("id", link.festival_id)
       .maybeSingle();
 
@@ -60,6 +60,24 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const { data: club, error: clubError } = await adminClient
+      .from("clubs")
+      .select("logo_path,status")
+      .eq("id", link.club_id)
+      .maybeSingle();
+
+    if (clubError) throw clubError;
+    if (!club || club.status !== "active") {
+      return new Response(JSON.stringify({ error: "Public link not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const logoUrl = club?.logo_path
+      ? `${supabaseUrl}/storage/v1/object/public/club-logos/${encodeURIComponent(String(club.logo_path)).replace(/%2F/g, "/")}`
+      : "";
 
     const [
       daysResult,
@@ -94,6 +112,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       festivalId: festival.id,
+      clubLogoUrl: logoUrl,
       festInfo: {
         name: festival.name ?? "",
         date: festival.date_label ?? "",

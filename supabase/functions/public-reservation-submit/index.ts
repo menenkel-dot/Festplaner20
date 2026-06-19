@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: link, error: linkError } = await adminClient
       .from("public_links")
-      .select("festival_id")
+      .select("festival_id,club_id")
       .eq("token", token)
       .eq("type", "guest_reservation")
       .eq("enabled", true)
@@ -101,6 +101,20 @@ Deno.serve(async (req) => {
 
     if (linkError) throw linkError;
     if (!link?.festival_id) {
+      return new Response(JSON.stringify({ error: "Public link not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: club, error: clubError } = await adminClient
+      .from("clubs")
+      .select("status")
+      .eq("id", link.club_id)
+      .maybeSingle();
+
+    if (clubError) throw clubError;
+    if (!club || club.status !== "active") {
       return new Response(JSON.stringify({ error: "Public link not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

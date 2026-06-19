@@ -167,6 +167,29 @@ interface AppUserProfile {
   role_id: string | null;
 }
 
+const BrandLogo = ({
+  src,
+  alt,
+  width,
+  height,
+  className,
+  priority,
+}: {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+  className?: string;
+  priority?: boolean;
+}) => {
+  if (src.startsWith("http")) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt={alt} width={width} height={height} className={className} />;
+  }
+
+  return <Image src={src} alt={alt} width={width} height={height} className={className} priority={priority} />;
+};
+
 const normalizeMojibakeText = (value: string) => {
   const cc = (...codes: number[]) => String.fromCharCode(...codes);
   const replacements: Array<[string, string]> = [
@@ -480,6 +503,7 @@ export default function Page() {
   const [syncMessage, setSyncMessage] = React.useState("");
   const [clubs, setClubs] = React.useState<Club[]>([]);
   const [activeClubId, setActiveClubId] = React.useState<string | null>(null);
+  const [activeClubLogoUrl, setActiveClubLogoUrl] = React.useState("");
   const [publicLinks, setPublicLinks] = React.useState<PublicLink[]>([]);
   const [publicLinkToken, setPublicLinkToken] = React.useState<string>("");
   const [activeFestivalId, setActiveFestivalId] = React.useState<string | null>(null);
@@ -727,6 +751,7 @@ export default function Page() {
           }
 
           applyRemoteSnapshot(remote.snapshot);
+          setActiveClubLogoUrl(remote.clubLogoUrl ?? "");
           setActiveFestivalId(remote.festivalId);
           localStorage.setItem("vfp_active_festival_id", remote.festivalId);
           setSyncMessage("Datenbank online");
@@ -938,6 +963,7 @@ export default function Page() {
         if (error) throw error;
         if (!data?.festInfo) return;
 
+        setActiveClubLogoUrl(String(data.clubLogoUrl ?? ""));
         setFestInfo(data.festInfo);
         setProgram(Array.isArray(data.program) ? data.program : []);
         setShifts(Array.isArray(data.shifts) ? data.shifts : []);
@@ -1121,6 +1147,7 @@ export default function Page() {
     setSupabaseUser(null);
     setClubs([]);
     setActiveClubId(null);
+    setActiveClubLogoUrl("");
     setPublicLinks([]);
     setActiveFestivalId(null);
     setSyncMessage("");
@@ -1232,6 +1259,7 @@ export default function Page() {
   const handleClubChange = (clubId: string) => {
     setActiveClubId(clubId);
     setActiveFestivalId(null);
+    setActiveClubLogoUrl("");
     setPublicLinks([]);
     remoteSyncReadyRef.current = false;
     lastSyncedPayloadRef.current = "";
@@ -2076,6 +2104,8 @@ export default function Page() {
   const pendingReservations = reservations.filter((reservation) => reservation.status === "Ausstehend").length;
   const confirmedReservations = reservations.filter((reservation) => reservation.status === "Bestätigt").length;
   const openShiftSpots = shifts.reduce((sum, shift) => sum + Math.max(0, shift.needed - shift.helpers.length), 0);
+  const currentClubLogoUrl = clubs.find((club) => club.id === activeClubId)?.logoUrl ?? "";
+  const brandLogoSrc = activeClubLogoUrl || currentClubLogoUrl || "/logo.png";
   const visibleDashboardMetrics = [
     {
       id: "dashboard:reserved_tables",
@@ -2126,8 +2156,8 @@ export default function Page() {
           <div className="max-w-4xl mx-auto px-4 py-10">
             <div className="mb-5 flex justify-center sm:justify-start">
               <div className="h-32 w-64">
-                <Image
-                  src="/logo.png"
+                <BrandLogo
+                  src={brandLogoSrc}
                   alt="FestPlaner Logo"
                   width={320}
                   height={192}
@@ -2356,8 +2386,8 @@ export default function Page() {
           <div className="max-w-4xl mx-auto px-4 py-10">
             <div className="mb-5 flex justify-center sm:justify-start">
               <div className="h-32 w-64">
-                <Image
-                  src="/logo.png"
+                <BrandLogo
+                  src={brandLogoSrc}
                   alt="FestPlaner Logo"
                   width={320}
                   height={192}
@@ -2844,8 +2874,8 @@ export default function Page() {
         <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-6">
           <div className="space-y-2 text-center">
             <div className="mx-auto h-20 w-36">
-              <Image
-                src="/logo.png"
+              <BrandLogo
+                src={brandLogoSrc}
                 alt="FestPlaner Logo"
                 width={288}
                 height={160}
@@ -2924,8 +2954,8 @@ export default function Page() {
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200 py-4 px-4 md:px-8 flex justify-between items-center">
         <div className="flex items-center space-x-3">
           <div className="h-16 w-24">
-            <Image
-              src="/logo.png"
+            <BrandLogo
+              src={brandLogoSrc}
               alt="FestPlaner Logo"
               width={192}
               height={128}
