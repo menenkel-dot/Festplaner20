@@ -468,31 +468,35 @@ export default function SysAdminPage() {
               {visibleClubs.map((club) => {
                 const clubMembers = membersByClub.get(club.id) ?? [];
                 return (
-                  <div key={club.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-12 w-16 items-center justify-center rounded-lg border border-slate-200 bg-white p-1">
-                            {club.logoUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={club.logoUrl} alt={`${club.name} Logo`} className="max-h-full max-w-full object-contain" />
-                            ) : (
-                              <Building2 className="h-5 w-5 text-slate-300" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-900">{club.name}</p>
-                            <p className="text-[11px] text-slate-500">Slug: {club.slug} · Status: {club.status}</p>
-                          </div>
+                  <div key={club.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="flex flex-col gap-3 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-12 w-16 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white p-1">
+                          {club.logoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={club.logoUrl} alt={`${club.name} Logo`} className="max-h-full max-w-full object-contain" />
+                          ) : (
+                            <Building2 className="h-5 w-5 text-slate-300" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-slate-900">{club.name}</p>
+                          <p className="truncate text-[11px] text-slate-500">Slug: {club.slug}</p>
                         </div>
                       </div>
-                      <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        {clubMembers.length} Benutzer
-                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${club.status === "inactive" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-100 bg-emerald-50 text-emerald-700"}`}>
+                          {club.status}
+                        </span>
+                        <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          {clubMembers.length} Benutzer
+                        </span>
+                      </div>
                     </div>
-                    <div className="mt-4 grid gap-2 border-t border-slate-200 pt-3 md:grid-cols-[1fr_auto_auto] md:items-center">
-                      <label className="block">
-                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Logo hochladen</span>
+
+                    <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Logo</span>
                         <span className="mb-2 block text-[10px] font-medium text-slate-500">PNG, JPG, WebP oder SVG, maximal 2 MB.</span>
                         <input
                           type="file"
@@ -504,27 +508,74 @@ export default function SysAdminPage() {
                           }}
                           className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-xs file:font-bold file:uppercase file:tracking-wider file:text-white"
                         />
-                      </label>
-                      {club.status === "inactive" ? (
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={() => handleSetStatus(club, "active")}
-                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700 hover:bg-emerald-100 disabled:text-slate-400"
-                        >
-                          Reaktivieren
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={() => handleSetStatus(club, "inactive")}
-                          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-amber-700 hover:bg-amber-100 disabled:text-slate-400"
-                        >
-                          Deaktivieren
-                        </button>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <span className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</span>
+                        {club.status === "inactive" ? (
+                          <button
+                            type="button"
+                            disabled={loading}
+                            onClick={() => handleSetStatus(club, "active")}
+                            className="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700 hover:bg-emerald-100 disabled:text-slate-400"
+                          >
+                            Reaktivieren
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={loading}
+                            onClick={() => handleSetStatus(club, "inactive")}
+                            className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-amber-700 hover:bg-amber-100 disabled:text-slate-400"
+                          >
+                            Deaktivieren
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-200 p-4">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Benutzer</h3>
+                        <span className="text-[10px] font-semibold text-slate-500">{clubMembers.length} zugeordnet</span>
+                      </div>
+                      <div className="space-y-1">
+                      {clubMembers.map((member) => (
+                        <div key={`${member.club_id}-${member.user_id}`} className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <Users className="h-3.5 w-3.5 text-slate-400" />
+                            <span className="font-semibold">{member.profile?.full_name || member.profile?.email || member.user_id}</span>
+                            <span className="text-slate-400">·</span>
+                            <span>{member.role?.name ?? "Keine Rolle"}</span>
+                            {member.profile?.email && <span className="text-slate-400">({member.profile.email})</span>}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={loading || member.user_id === user.id}
+                            onClick={() => handleDeleteMember(club, member)}
+                            className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-50 disabled:bg-slate-100 disabled:text-slate-400 sm:w-auto"
+                            title={member.user_id === user.id ? "Eigener Benutzer kann nicht gelöscht werden" : "Benutzer löschen"}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Löschen
+                          </button>
+                        </div>
+                      ))}
+                      {clubMembers.length === 0 && (
+                        <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                          Noch keine Benutzer zugeordnet.
+                        </p>
                       )}
-                      <div className="flex gap-2">
+                      </div>
+                    </div>
+
+                    <div className="border-t border-rose-100 bg-rose-50/50 p-4">
+                      <div className="mb-3">
+                        <h3 className="text-[10px] font-bold uppercase tracking-wider text-rose-700">Gefahrenzone</h3>
+                        <p className="mt-1 text-xs leading-relaxed text-rose-700/80">
+                          Das endgültige Löschen entfernt den Verein inklusive zugehöriger Vereinsdaten.
+                        </p>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                         <input
                           type="text"
                           placeholder={`Zum Löschen: ${club.name}`}
@@ -541,29 +592,6 @@ export default function SysAdminPage() {
                           Endgültig löschen
                         </button>
                       </div>
-                    </div>
-                    <div className="mt-3 space-y-1">
-                      {clubMembers.map((member) => (
-                        <div key={`${member.club_id}-${member.user_id}`} className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <Users className="h-3.5 w-3.5 text-slate-400" />
-                            <span className="font-semibold">{member.profile?.full_name || member.profile?.email || member.user_id}</span>
-                            <span className="text-slate-400">·</span>
-                            <span>{member.role?.name ?? "Keine Rolle"}</span>
-                            {member.profile?.email && <span className="text-slate-400">({member.profile.email})</span>}
-                          </div>
-                          <button
-                            type="button"
-                            disabled={loading || member.user_id === user.id}
-                            onClick={() => handleDeleteMember(club, member)}
-                            className="inline-flex items-center justify-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-50 disabled:bg-slate-100 disabled:text-slate-400"
-                            title={member.user_id === user.id ? "Eigener Benutzer kann nicht gelöscht werden" : "Benutzer löschen"}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Löschen
-                          </button>
-                        </div>
-                      ))}
                     </div>
                   </div>
                 );

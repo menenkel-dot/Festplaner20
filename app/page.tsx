@@ -2172,6 +2172,45 @@ export default function Page() {
   const openShiftSpots = shifts.reduce((sum, shift) => sum + Math.max(0, shift.needed - shift.helpers.length), 0);
   const currentClubLogoUrl = clubs.find((club) => club.id === activeClubId)?.logoUrl ?? "";
   const brandLogoSrc = activeClubLogoUrl || currentClubLogoUrl || "/logo.png";
+  const activeHelperLink = publicLinks.find((link) => link.type === "helper_signup" && link.enabled);
+  const activeReservationLink = publicLinks.find((link) => link.type === "guest_reservation" && link.enabled);
+  const workflowSteps = [
+    {
+      label: "Verein ausgewählt",
+      description: activeClubId ? "Alle Daten werden dem aktuellen Verein zugeordnet." : "Wähle zuerst einen Verein aus.",
+      done: Boolean(activeClubId),
+      action: "Verein prüfen",
+      tab: "users" as AdminTab,
+    },
+    {
+      label: "Festdaten gepflegt",
+      description: festInfo.name && festInfo.date && festInfo.location ? "Name, Datum und Ort sind gepflegt." : "Name, Datum und Ort fehlen noch teilweise.",
+      done: Boolean(festInfo.name && festInfo.date && festInfo.location),
+      action: "Festdaten öffnen",
+      tab: "info" as AdminTab,
+    },
+    {
+      label: "Programm/Festtage angelegt",
+      description: program.length > 0 ? `${program.length} Programmpunkt(e) angelegt.` : "Lege mindestens einen Programmpunkt an.",
+      done: program.length > 0,
+      action: "Programm öffnen",
+      tab: "info" as AdminTab,
+    },
+    {
+      label: "Helferschichten angelegt",
+      description: shifts.length > 0 ? `${shifts.length} Schicht(en), ${openShiftSpots} offene Plätze.` : "Lege Schichten für Helfer an.",
+      done: shifts.length > 0,
+      action: "Schichten öffnen",
+      tab: "shifts" as AdminTab,
+    },
+    {
+      label: "Öffentliche Links aktiv",
+      description: activeHelperLink && activeReservationLink ? "Helfer- und Gästeportal sind aktiv." : "Mindestens ein öffentlicher Link fehlt oder ist inaktiv.",
+      done: Boolean(activeHelperLink && activeReservationLink),
+      action: "Links verwalten",
+      tab: "users" as AdminTab,
+    },
+  ];
   const visibleDashboardMetrics = [
     {
       id: "dashboard:reserved_tables",
@@ -3326,6 +3365,47 @@ export default function Page() {
                         Reservierungen prüfen
                       </button>
                     )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5 shadow-sm">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Nächste Schritte</span>
+                      <h3 className="mt-1 text-lg font-bold text-slate-900">Fest startklar machen</h3>
+                      <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
+                        Diese Checkliste zeigt, welche Grunddaten für einen sauberen Vereins-Workflow noch fehlen.
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-blue-100 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700">
+                      {workflowSteps.filter((step) => step.done).length}/{workflowSteps.length} erledigt
+                    </span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-5">
+                    {workflowSteps.map((step) => (
+                      <div key={step.label} className="flex flex-col justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                        <div>
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold ${
+                              step.done
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-amber-200 bg-amber-50 text-amber-700"
+                            }`}>
+                              {step.done ? <Check className="h-3.5 w-3.5" /> : "!"}
+                            </span>
+                            <p className="text-xs font-bold text-slate-900">{step.label}</p>
+                          </div>
+                          <p className="text-[11px] leading-relaxed text-slate-500">{step.description}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openTab(step.tab)}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50"
+                        >
+                          {step.action}
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -4894,65 +4974,79 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Öffentliche Links</h3>
-                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                      Diese Links sind an den aktuell ausgewählten Verein gebunden. Bei neuer Generierung werden alte Links ungültig.
-                    </p>
+                <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5 shadow-sm space-y-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Öffentliche Portale</span>
+                      <h3 className="mt-1 text-lg font-bold text-slate-900">Helfer- und Gästezugänge</h3>
+                      <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
+                        Diese Links sind vereinsgebunden. Wenn ein Link neu generiert wird, werden alte aktive Links für dieses Portal ungültig.
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-blue-100 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700">
+                      {publicLinks.filter((link) => link.enabled).length} aktiv
+                    </span>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {[
-                      { type: "helper_signup" as const, mode: "helfer" as const, label: "Helfer-Anmeldung" },
-                      { type: "guest_reservation" as const, mode: "reservierung" as const, label: "Gäste-Reservierung" },
+                      { type: "helper_signup" as const, mode: "helfer" as const, label: "Helfer-Anmeldung", hint: "Für Helfer, die sich selbst in freie Schichten eintragen." },
+                      { type: "guest_reservation" as const, mode: "reservierung" as const, label: "Gäste-Reservierung", hint: "Für Gäste und Vereine, die Tischreservierungen anfragen." },
                     ].map((item) => {
                       const link = publicLinks.find((entry) => entry.type === item.type && entry.enabled);
                       const url = getShareableLink(item.mode);
                       return (
-                        <div key={item.type} className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-xs font-bold text-slate-800">{item.label}</p>
-                              <p className="text-[10px] text-slate-500 break-all mt-1">{link ? url : "Noch kein aktiver Link vorhanden."}</p>
+                        <div key={item.type} className={`rounded-lg border p-4 shadow-sm ${link ? "border-emerald-100 bg-white" : "border-slate-200 bg-white"}`}>
+                          <div className="flex flex-col gap-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-bold text-slate-900">{item.label}</p>
+                                <p className="mt-1 text-xs leading-relaxed text-slate-500">{item.hint}</p>
+                              </div>
+                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${link ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-slate-100 text-slate-500 border border-slate-200"}`}>
+                                {link ? "Aktiv" : "Inaktiv"}
+                              </span>
                             </div>
-                            <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${link ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-slate-100 text-slate-500 border border-slate-200"}`}>
-                              {link ? "Aktiv" : "Inaktiv"}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              disabled={!link}
-                              onClick={() => copyLink(item.mode)}
-                              className="border border-slate-200 bg-white hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 text-slate-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
-                            >
-                              Kopieren
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!link}
-                              onClick={() => window.open(url, "_blank")}
-                              className="border border-slate-200 bg-white hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 text-slate-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
-                            >
-                              Öffnen
-                            </button>
-                            {link && (
+                            <div className={`rounded-lg border px-3 py-2 ${link ? "border-emerald-100 bg-emerald-50/60" : "border-slate-200 bg-slate-50"}`}>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Link</p>
+                              <p className="mt-1 break-all text-[11px] font-medium text-slate-700">
+                                {link ? url : "Noch kein aktiver Link vorhanden. Generiere den Link, bevor du ihn teilst."}
+                              </p>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                               <button
                                 type="button"
-                                onClick={() => setPublicLinkEnabled(link, false)}
-                                className="border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
+                                disabled={!link}
+                                onClick={() => copyLink(item.mode)}
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400"
                               >
-                                Deaktivieren
+                                Kopieren
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              disabled={userAdminLoading || !activeFestivalId}
-                              onClick={() => regeneratePublicLink(item.type)}
-                              className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
-                            >
-                              Neu generieren
-                            </button>
+                              <button
+                                type="button"
+                                disabled={!link}
+                                onClick={() => window.open(url, "_blank")}
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400"
+                              >
+                                Öffnen
+                              </button>
+                              {link && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPublicLinkEnabled(link, false)}
+                                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-100"
+                                >
+                                  Deaktivieren
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                disabled={userAdminLoading || !activeFestivalId}
+                                onClick={() => regeneratePublicLink(item.type)}
+                                className={`${link ? "bg-slate-900 hover:bg-slate-800" : "bg-blue-600 hover:bg-blue-700"} rounded-lg px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white disabled:bg-slate-200 disabled:text-slate-500`}
+                              >
+                                {link ? "Neu generieren" : "Link generieren"}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -4987,22 +5081,31 @@ export default function Page() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Neue Rolle</h3>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Neue Rolle</h3>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-500">Lege fest, welche Bereiche Benutzer dieser Rolle sehen und bearbeiten dürfen.</p>
+                    </div>
                     <form onSubmit={handleCreateRole} className="space-y-3">
-                      <input
-                        type="text"
-                        placeholder="Rollenname"
-                        value={newRoleName}
-                        onChange={(e) => setNewRoleName(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Beschreibung"
-                        value={newRoleDescription}
-                        onChange={(e) => setNewRoleDescription(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      />
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Rollenname *</span>
+                        <input
+                          type="text"
+                          placeholder="z.B. Kassier, Schichtleitung"
+                          value={newRoleName}
+                          onChange={(e) => setNewRoleName(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Beschreibung</span>
+                        <input
+                          type="text"
+                          placeholder="Kurze interne Beschreibung"
+                          value={newRoleDescription}
+                          onChange={(e) => setNewRoleDescription(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                        />
+                      </label>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {ADMIN_PERMISSIONS.map((permission) => (
                           <label key={permission.id} className="flex items-center space-x-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
@@ -5052,39 +5155,54 @@ export default function Page() {
                   </div>
 
                   <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Neuer Benutzer</h3>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Neuer Benutzer</h3>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-500">Erstelle einen Login für diesen Verein und weise direkt eine Rolle zu.</p>
+                    </div>
                     <form onSubmit={handleCreateUser} className="space-y-3">
-                      <input
-                        type="text"
-                        placeholder="Vollständiger Name"
-                        value={newUserFullName}
-                        onChange={(e) => setNewUserFullName(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      />
-                      <input
-                        type="email"
-                        placeholder="E-Mail"
-                        value={newUserEmail}
-                        onChange={(e) => setNewUserEmail(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      />
-                      <input
-                        type="password"
-                        placeholder="Initiales Passwort"
-                        value={newUserPassword}
-                        onChange={(e) => setNewUserPassword(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      />
-                      <select
-                        value={newUserRoleId}
-                        onChange={(e) => setNewUserRoleId(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      >
-                        <option value="">Rolle auswählen</option>
-                        {appRoles.map((role) => (
-                          <option key={role.id} value={role.id}>{role.name}</option>
-                        ))}
-                      </select>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Vollständiger Name</span>
+                        <input
+                          type="text"
+                          placeholder="Name des Benutzers"
+                          value={newUserFullName}
+                          onChange={(e) => setNewUserFullName(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">E-Mail *</span>
+                        <input
+                          type="email"
+                          placeholder="name@example.at"
+                          value={newUserEmail}
+                          onChange={(e) => setNewUserEmail(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Initiales Passwort *</span>
+                        <input
+                          type="password"
+                          placeholder="Mindestens 6 Zeichen"
+                          value={newUserPassword}
+                          onChange={(e) => setNewUserPassword(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Rolle *</span>
+                        <select
+                          value={newUserRoleId}
+                          onChange={(e) => setNewUserRoleId(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                        >
+                          <option value="">Rolle auswählen</option>
+                          {appRoles.map((role) => (
+                            <option key={role.id} value={role.id}>{role.name}</option>
+                          ))}
+                        </select>
+                      </label>
                       <button
                         type="submit"
                         disabled={userAdminLoading || !newUserEmail || !newUserPassword || !newUserRoleId}
@@ -5097,13 +5215,21 @@ export default function Page() {
                 </div>
 
                 <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Benutzerübersicht</h3>
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Benutzerübersicht</h3>
+                      <p className="text-xs text-slate-500">Bestehende Benutzer, Rollen und Zugänge für diesen Verein.</p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      {appUsers.length} Benutzer
+                    </span>
+                  </div>
                   <div className="space-y-2">
                     {appUsers.map((user) => (
-                      <div key={user.user_id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-slate-200 rounded-lg p-3 bg-slate-50">
-                        <div>
+                      <div key={user.user_id} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_220px_auto] sm:items-center">
+                        <div className="min-w-0">
                           <p className="text-xs font-bold text-slate-800">{user.full_name || user.email}</p>
-                          <p className="text-[11px] text-slate-500">{user.email}</p>
+                          <p className="truncate text-[11px] text-slate-500">{user.email}</p>
                         </div>
                         <select
                           value={user.role_id ?? ""}
@@ -5120,7 +5246,7 @@ export default function Page() {
                           type="button"
                           disabled={userAdminLoading || user.user_id === supabaseUser?.id}
                           onClick={() => handleDeleteUser(user)}
-                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-50 disabled:bg-slate-100 disabled:text-slate-400"
+                          className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-50 disabled:bg-slate-100 disabled:text-slate-400 sm:w-auto"
                           title={user.user_id === supabaseUser?.id ? "Eigener Benutzer kann nicht gelöscht werden" : "Benutzer löschen"}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -5135,7 +5261,15 @@ export default function Page() {
                 </div>
 
                 <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Rollenübersicht</h3>
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Rollenübersicht</h3>
+                      <p className="text-xs text-slate-500">Berechtigungen kompakt prüfen und Rollen bearbeiten.</p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      {appRoles.length} Rollen
+                    </span>
+                  </div>
                   <div className="space-y-3">
                     {appRoles.map((role) => {
                       const isEditing = editingRoleId === role.id;
@@ -5256,7 +5390,7 @@ export default function Page() {
                                   type="button"
                                   disabled={userAdminLoading}
                                   onClick={() => startEditingRole(role)}
-                                  className="self-start border border-slate-200 bg-white hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 text-slate-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
+                                  className="w-full self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 sm:w-auto"
                                 >
                                   Bearbeiten
                                 </button>
@@ -5264,7 +5398,7 @@ export default function Page() {
                                   type="button"
                                   disabled={userAdminLoading}
                                   onClick={() => handleDeleteRole(role)}
-                                  className="inline-flex items-center gap-1 self-start border border-rose-200 bg-white hover:bg-rose-50 disabled:bg-slate-100 disabled:text-slate-400 text-rose-700 font-bold px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider"
+                                  className="inline-flex w-full items-center justify-center gap-1 self-start rounded-lg border border-rose-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-50 disabled:bg-slate-100 disabled:text-slate-400 sm:w-auto"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                   Löschen
