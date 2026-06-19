@@ -356,27 +356,26 @@ const buildFestDaysFromRange = (startDate?: string, endDate?: string, existingDa
   return days;
 };
 
-const hasMeaningfulPlanData = (snapshot: FestPlanerSnapshot) => {
-  return Boolean(
-    snapshot.festInfo.name.trim() ||
-    snapshot.festInfo.location.trim() ||
-    snapshot.festInfo.description.trim() ||
-    snapshot.program.length ||
-    snapshot.checklist.length ||
-    snapshot.protocols.length ||
-    snapshot.shifts.length ||
-    snapshot.reservations.length ||
-    snapshot.finances.length ||
-    snapshot.budget > 0,
-  );
-};
-
 const DEFAULT_PROGRAM: ProgramItem[] = [];
 const DEFAULT_CHECKLIST: ChecklistItem[] = [];
 const DEFAULT_PROTOCOLS: Protocol[] = [];
 const DEFAULT_SHIFTS: Shift[] = [];
 const DEFAULT_RESERVATIONS: Reservation[] = [];
 const DEFAULT_FINANCES: FinancialItem[] = [];
+
+const createEmptySnapshot = (): FestPlanerSnapshot => ({
+  festInfo: {
+    ...DEFAULT_FEST_INFO,
+    daysConfig: [],
+  },
+  program: [],
+  checklist: [],
+  protocols: [],
+  shifts: [],
+  reservations: [],
+  finances: [],
+  budget: 0,
+});
 
 export default function Page() {
   // --- Global App States with Client-Side Hydration ---
@@ -524,6 +523,7 @@ export default function Page() {
   const [newUserFullName, setNewUserFullName] = React.useState("");
   const [newUserRoleId, setNewUserRoleId] = React.useState("");
   const [userAdminLoading, setUserAdminLoading] = React.useState(false);
+  const [nextStepsOpen, setNextStepsOpen] = React.useState(false);
   const remoteSyncReadyRef = React.useRef(false);
   const applyingRemoteSnapshotRef = React.useRef(false);
   const syncTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -700,6 +700,15 @@ export default function Page() {
       setPublicResTime(firstTime);
       setAdminResDayId(firstConfiguredDay.id);
       setPublicResSelectedTables([]);
+    } else {
+      setNewShiftDay("");
+      setNewProgDay("");
+      setNewResDate("");
+      setNewResTime("");
+      setPublicResDate("");
+      setPublicResTime("");
+      setAdminResDayId("");
+      setPublicResSelectedTables([]);
     }
     setProgram(snapshot.program);
     setChecklist(snapshot.checklist);
@@ -740,17 +749,6 @@ export default function Page() {
         if (!active) return;
 
         if (remote) {
-          const localSnapshot = currentSnapshotRef.current;
-          if (localSnapshot && hasMeaningfulPlanData(localSnapshot) && !hasMeaningfulPlanData(remote.snapshot)) {
-            const festivalId = await saveActiveFestivalToSupabase(supabase, supabaseUser, localSnapshot, activeClubId, remote.festivalId);
-            if (!active) return;
-            setActiveFestivalId(festivalId);
-            localStorage.setItem("vfp_active_festival_id", festivalId);
-            lastSyncedPayloadRef.current = JSON.stringify(localSnapshot);
-            setSyncMessage("Lokaler Plan nach Supabase übertragen");
-            return;
-          }
-
           applyRemoteSnapshot(remote.snapshot);
           setActiveClubLogoUrl(remote.clubLogoUrl ?? "");
           setActiveFestivalId(remote.festivalId);
@@ -759,14 +757,13 @@ export default function Page() {
           return;
         }
 
-        const snapshot = currentSnapshotRef.current;
-        if (!snapshot) return;
-        const festivalId = await saveActiveFestivalToSupabase(supabase, supabaseUser, snapshot, activeClubId);
-        if (!active) return;
-        setActiveFestivalId(festivalId);
-        localStorage.setItem("vfp_active_festival_id", festivalId);
-        lastSyncedPayloadRef.current = JSON.stringify(snapshot);
-        setSyncMessage("Plan in Supabase angelegt");
+        const emptySnapshot = createEmptySnapshot();
+        applyRemoteSnapshot(emptySnapshot);
+        setActiveClubLogoUrl("");
+        setActiveFestivalId(null);
+        localStorage.removeItem("vfp_active_festival_id");
+        lastSyncedPayloadRef.current = JSON.stringify(emptySnapshot);
+        setSyncMessage("Neuer Verein ohne Planungsdaten");
       })
       .catch((error) => {
         if (!active) return;
@@ -3369,7 +3366,7 @@ export default function Page() {
                 </div>
 
                 <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5 shadow-sm">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Nächste Schritte</span>
                       <h3 className="mt-1 text-lg font-bold text-slate-900">Fest startklar machen</h3>
@@ -3377,36 +3374,47 @@ export default function Page() {
                         Diese Checkliste zeigt, welche Grunddaten für einen sauberen Vereins-Workflow noch fehlen.
                       </p>
                     </div>
-                    <span className="rounded-full border border-blue-100 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700">
-                      {workflowSteps.filter((step) => step.done).length}/{workflowSteps.length} erledigt
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-blue-100 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700">
+                        {workflowSteps.filter((step) => step.done).length}/{workflowSteps.length} erledigt
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNextStepsOpen((current) => !current)}
+                        className="rounded-lg border border-blue-100 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:bg-blue-50"
+                      >
+                        {nextStepsOpen ? "Einklappen" : "Anzeigen"}
+                      </button>
+                    </div>
                   </div>
-                  <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-5">
-                    {workflowSteps.map((step) => (
-                      <div key={step.label} className="flex flex-col justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
-                        <div>
-                          <div className="mb-2 flex items-center gap-2">
-                            <span className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold ${
-                              step.done
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : "border-amber-200 bg-amber-50 text-amber-700"
-                            }`}>
-                              {step.done ? <Check className="h-3.5 w-3.5" /> : "!"}
-                            </span>
-                            <p className="text-xs font-bold text-slate-900">{step.label}</p>
+                  {nextStepsOpen && (
+                    <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-5">
+                      {workflowSteps.map((step) => (
+                        <div key={step.label} className="flex flex-col justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                          <div>
+                            <div className="mb-2 flex items-center gap-2">
+                              <span className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold ${
+                                step.done
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : "border-amber-200 bg-amber-50 text-amber-700"
+                              }`}>
+                                {step.done ? <Check className="h-3.5 w-3.5" /> : "!"}
+                              </span>
+                              <p className="text-xs font-bold text-slate-900">{step.label}</p>
+                            </div>
+                            <p className="text-[11px] leading-relaxed text-slate-500">{step.description}</p>
                           </div>
-                          <p className="text-[11px] leading-relaxed text-slate-500">{step.description}</p>
+                          <button
+                            type="button"
+                            onClick={() => openTab(step.tab)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50"
+                          >
+                            {step.action}
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => openTab(step.tab)}
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50"
-                        >
-                          {step.action}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {visibleDashboardMetrics.length > 0 && (
