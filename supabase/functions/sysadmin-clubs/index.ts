@@ -54,6 +54,20 @@ const parseDataUrl = (value: string) => {
   };
 };
 
+const findUserByEmail = async (
+  adminClient: ReturnType<typeof createClient>,
+  email: string,
+) => {
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage: 100 });
+    if (error) throw error;
+    const user = data.users.find((candidate) => candidate.email?.toLowerCase() === email);
+    if (user) return user;
+    if (data.users.length < 100) break;
+  }
+  return null;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -123,8 +137,12 @@ Deno.serve(async (req) => {
         user_metadata: { full_name: adminFullName },
       });
 
-      if (createUserError) throw createUserError;
-      const userId = createdUser.user?.id;
+      if (createUserError && !createUserError.message.toLowerCase().includes("already")) {
+        throw createUserError;
+      }
+
+      const existingUser = createUserError ? await findUserByEmail(adminClient, adminEmail) : null;
+      const userId = createdUser.user?.id ?? existingUser?.id;
       if (!userId) throw new Error("Admin user was not created.");
 
       const { data: club, error: clubError } = await adminClient
