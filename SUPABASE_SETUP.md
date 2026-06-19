@@ -1,48 +1,42 @@
-# Supabase Setup fuer FestPlaner
+# Supabase Setup für FestPlaner
 
 ## Zielbild
 
-Die App soll auf Vercel laufen und Supabase fuer Persistenz, Auth und spaeter Realtime verwenden. Aktuell bleibt `localStorage` als Fallback bestehen, bis die UI-Schreiboperationen Schritt fuer Schritt auf Supabase umgestellt sind.
+FestPlaner läuft mit Supabase für Auth, Mandantenfähigkeit, Persistenz, öffentliche Links, Storage und Edge Functions. `localStorage` bleibt nur als lokaler Fallback und für ältere Datenstände erhalten.
 
-## Aktueller Frontend-Stack
-
-- Next.js 16 mit App Router und Turbopack
-- React 19
-- Tailwind CSS 4
-- Supabase JS 2 und `@supabase/ssr`
-
-## Lokale Vorbereitung
-
-1. Supabase-Projekt anlegen.
-2. In Supabase die Migration aus `supabase/migrations/20260531203000_initial_festplaner_schema.sql` im SQL Editor ausfuehren.
-3. Eine `.env.local` anlegen:
+## Environment
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL="https://<project-ref>.supabase.co"
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="<publishable-key>"
 ```
 
-4. Dieselben Variablen in Vercel unter Project Settings -> Environment Variables setzen.
+Die Werte müssen lokal in `.env.local` und im Hosting-Provider gesetzt sein.
 
-## Security-Entscheidungen
+## Datenmodell
 
-- Alle Tabellen haben RLS aktiviert.
-- Admin-Bereiche sind fuer `authenticated` Nutzer vorgesehen und werden ueber `owner_id = auth.uid()` getrennt.
-- Oeffentliche Portale werden im ersten Supabase-Schritt noch nicht direkt auf Tabellen freigegeben.
-- Helfer-Eintragungen und Reservierungsanfragen sollen als naechster Schritt ueber tokenisierte Next.js Route Handler laufen.
-- Finanzdaten, Checklisten und Protokolle sind nicht fuer `anon` freigegeben.
+- `clubs` trennt Vereine/Mandanten.
+- `club_memberships` verbindet Benutzer mit Vereinen.
+- `app_roles` definiert Rollen pro Verein.
+- `system_admins` berechtigt globale Systemadmins für `/sysadmin`.
+- `public_links` speichert tokenisierte Helfer- und Reservierungslinks pro Verein/Festival.
+- `club-logos` ist ein öffentlicher Storage-Bucket für Vereinslogos.
 
-## Aktueller App-Stand
+## Edge Functions
 
-- `.env.local` wird lokal fuer Next.js verwendet.
-- Im Dashboard gibt es einen Supabase-Login in der linken Seitenleiste.
-- Nach Login kann der aktuelle `localStorage`-Stand als neues Festival nach Supabase importiert werden.
-- Die laufende Bearbeitung schreibt weiterhin lokal, bis die Repository-Funktionen vollstaendig angebunden sind.
+Aktive Functions:
 
-## Naechste technische Schritte
+- `sysadmin-clubs` für Vereine, Logos, Status und initiale Vereinsadmins.
+- `admin-users` für Vereinsbenutzer.
+- `public-festival` für öffentliche Link-Daten.
+- `public-helper-signup` für Helfereintragungen.
+- `public-reservation-submit` für Reservierungsanfragen.
 
-1. Migration im Supabase-Projekt ausfuehren.
-2. Daten beim App-Start aus Supabase laden, falls ein importiertes Festival vorhanden ist.
-3. Schreibfunktionen in `app/page.tsx` von `saveToStorage` auf Repository-Funktionen umstellen.
-4. Oeffentliche Links von `?mode=helfer` auf tokenisierte Links erweitern, z.B. `?mode=helfer&festival=<id>&token=<helper-token>`, und die Writes serverseitig validieren.
-5. Belege aus Base64 in Supabase Storage verschieben, bevor echte Rechnungen hochgeladen werden.
+Nach Codeänderungen in `supabase/functions` müssen die betroffenen Functions deployed werden.
+
+## Betriebshinweise
+
+- Öffentliche Seiten ohne gültigen Token dürfen keine Formulare anzeigen.
+- Inaktive oder gelöschte Vereine dürfen über öffentliche Links nicht erreichbar sein.
+- In Supabase Auth sollte “Leaked Password Protection” aktiviert werden.
+- Supabase Advisors nach Migrationen prüfen.

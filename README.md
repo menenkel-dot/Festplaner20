@@ -1,20 +1,28 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# FestPlaner
 
-# Run and deploy your AI Studio app
+FestPlaner ist eine Next.js-Webapp zur Planung von Vereinsfesten mit Supabase-Backend. Die App unterstützt mehrere Vereine, getrennte Vereinsdaten, öffentliche Helfer- und Reservierungslinks sowie eine Systemverwaltung unter `/sysadmin`.
 
-This contains everything you need to run your app locally.
+## Lokal starten
 
-View your app in AI Studio: https://ai.studio/apps/7f574d8f-ecc3-499c-883b-4c99571873a1
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
+1. Abhängigkeiten installieren:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. `.env.local` mit Supabase-Werten anlegen:
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL="https://<project-ref>.supabase.co"
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="<publishable-key>"
+   ```
+3. App starten:
    `npm run dev`
+
+## Wichtige Bereiche
+
+- `/` ist die Vereins-App für angemeldete Vereinsnutzer.
+- `/sysadmin` ist die Systemverwaltung für globale Systemadmins.
+- `/helfer/:token` ist der öffentliche Helferlink eines Vereins.
+- `/reservierung/:token` ist der öffentliche Reservierungslink eines Vereins.
+
+## Supabase
+
+Schemaänderungen liegen in `supabase/migrations`. Edge Functions liegen in `supabase/functions` und müssen nach Änderungen ins Supabase-Projekt deployed werden.
+
+Öffentliche Links sind tokenisiert und werden serverseitig gegen Verein, Festival, Status und Linktyp validiert.

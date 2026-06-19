@@ -506,6 +506,7 @@ export default function Page() {
   const [activeClubLogoUrl, setActiveClubLogoUrl] = React.useState("");
   const [publicLinks, setPublicLinks] = React.useState<PublicLink[]>([]);
   const [publicLinkToken, setPublicLinkToken] = React.useState<string>("");
+  const [publicLinkError, setPublicLinkError] = React.useState("");
   const [activeFestivalId, setActiveFestivalId] = React.useState<string | null>(null);
   const [authReady, setAuthReady] = React.useState(() => !isSupabaseConfigured());
   const [appRoles, setAppRoles] = React.useState<AppRole[]>([]);
@@ -942,6 +943,7 @@ export default function Page() {
     if (!supabase || !isMounted || (appMode !== "helfer" && appMode !== "reservierung")) return;
     if (!publicLinkToken) {
       const toastTimer = window.setTimeout(() => {
+        setPublicLinkError("Dieser öffentliche Link ist ungültig oder unvollständig.");
         showToast("Dieser öffentliche Link ist ungültig oder unvollständig.", "error");
       }, 0);
       return () => window.clearTimeout(toastTimer);
@@ -949,6 +951,7 @@ export default function Page() {
 
     let active = true;
     const loadingTimer = setTimeout(() => {
+      setPublicLinkError("");
       if (active) setPublicPortalLoading(true);
     }, 0);
 
@@ -961,7 +964,10 @@ export default function Page() {
       .then(({ data, error }) => {
         if (!active) return;
         if (error) throw error;
-        if (!data?.festInfo) return;
+        if (!data?.festInfo) {
+          setPublicLinkError("Dieser öffentliche Link ist ungültig oder abgelaufen.");
+          return;
+        }
 
         setActiveClubLogoUrl(String(data.clubLogoUrl ?? ""));
         setFestInfo(data.festInfo);
@@ -982,6 +988,7 @@ export default function Page() {
       })
       .catch((error) => {
         console.error("Public festival load failed", error);
+        if (active) setPublicLinkError("Dieser öffentliche Link ist ungültig oder abgelaufen.");
         showToast("Öffentliche Daten konnten nicht geladen werden.", "error");
       })
       .finally(() => {
@@ -1972,7 +1979,7 @@ export default function Page() {
     });
 
     setShifts(updated);
-    saveToStorage("vfp_shifts", updated);
+    if (!supabase) saveToStorage("vfp_shifts", updated);
     setPublicHelperName("");
     setPublicSelectedShiftId(null);
     showToast(`Vielen Dank! Du wurdest erfolgreich eingetragen.`, "success");
@@ -2074,7 +2081,7 @@ export default function Page() {
 
     const updated = [...reservations, newRes];
     setReservations(updated);
-    saveToStorage("vfp_reservations", updated);
+    if (!supabase) saveToStorage("vfp_reservations", updated);
 
     setPublicResFirstName("");
     setPublicResLastName("");
@@ -2141,6 +2148,43 @@ export default function Page() {
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">FestPlaner</div>
           <p className="text-slate-700 text-sm font-semibold">Lade Dashboard...</p>
         </div>
+      </div>
+    );
+  }
+
+  if ((appMode === "helfer" || appMode === "reservierung") && publicLinkError) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
+        <div className="bg-white border-b border-slate-200">
+          <div className="max-w-3xl mx-auto px-4 py-10">
+            <div className="mb-5 flex justify-center">
+              <div className="h-28 w-56">
+                <BrandLogo
+                  src={brandLogoSrc}
+                  alt="FestPlaner Logo"
+                  width={280}
+                  height={168}
+                  className="h-full w-full object-contain"
+                  priority
+                />
+              </div>
+            </div>
+            <div className="mx-auto max-w-xl rounded-xl border border-amber-200 bg-amber-50 p-6 text-center shadow-sm">
+              <AlertCircle className="mx-auto h-8 w-8 text-amber-700" />
+              <h1 className="mt-3 text-xl font-bold text-slate-900">Link nicht verfügbar</h1>
+              <p className="mt-2 text-sm font-medium leading-relaxed text-slate-600">
+                {publicLinkError} Bitte nutze den aktuellen Link deines Vereins oder frage beim Veranstalter nach.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {notification && (
+          <div className="fixed bottom-5 right-5 z-50 bg-slate-950 text-white py-3 px-5 rounded-lg shadow-lg flex items-center space-x-3 text-xs max-w-sm border border-slate-800">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+            <span className="font-semibold">{notification.message}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -2405,7 +2449,7 @@ export default function Page() {
             </h1>
             <p className="text-slate-500 text-sm font-medium max-w-2xl font-sans">
               Sichere dir einen Tisch auf dem Fest: <strong className="text-slate-900 font-bold">{festInfo.name || "Ihr Vereinsfest"}</strong>.
-              Wählen einen Termin aus und füllen Sie die Kontaktdaten aus.
+              Wähle einen Termin aus und fülle die Kontaktdaten aus.
             </p>
           </div>
         </div>

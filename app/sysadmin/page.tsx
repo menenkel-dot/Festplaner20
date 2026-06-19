@@ -58,6 +58,7 @@ export default function SysAdminPage() {
   const [adminEmail, setAdminEmail] = React.useState("");
   const [adminPassword, setAdminPassword] = React.useState("");
   const [deleteConfirmByClub, setDeleteConfirmByClub] = React.useState<Record<string, string>>({});
+  const [clubSearch, setClubSearch] = React.useState("");
 
   const loadData = React.useCallback(async () => {
     if (!supabase || !user) return;
@@ -156,11 +157,13 @@ export default function SysAdminPage() {
         },
       });
       if (error) throw error;
+      const createdClubName = clubName.trim();
+      const createdAdminEmail = adminEmail.trim();
       setClubName("");
       setAdminFullName("");
       setAdminEmail("");
       setAdminPassword("");
-      setMessage(`Verein wurde angelegt. Admin User-ID: ${data?.adminUserId ?? "-"}`);
+      setMessage(`Verein "${createdClubName}" wurde angelegt. Admin: ${createdAdminEmail}. Der Admin kann sich jetzt in der App anmelden.`);
       await loadData();
     } catch (error) {
       setMessage(`Verein konnte nicht angelegt werden: ${getErrorMessage(error)}`);
@@ -193,6 +196,10 @@ export default function SysAdminPage() {
   };
 
   const handleDeleteClub = (club: ClubRow) => {
+    const confirmed = window.confirm(
+      `Verein "${club.name}" endgültig löschen? Alle zugehörigen Vereinsdaten werden entfernt. Diese Aktion kann nicht rückgängig gemacht werden.`,
+    );
+    if (!confirmed) return;
     invokeSysadminAction(
       { action: "delete", clubId: club.id, confirmName: deleteConfirmByClub[club.id] ?? "" },
       `${club.name} wurde endgültig gelöscht.`,
@@ -248,6 +255,12 @@ export default function SysAdminPage() {
     }
     return map;
   }, [memberships]);
+
+  const visibleClubs = React.useMemo(() => {
+    const query = clubSearch.trim().toLowerCase();
+    if (!query) return clubs;
+    return clubs.filter((club) => `${club.name} ${club.slug} ${club.status}`.toLowerCase().includes(query));
+  }, [clubSearch, clubs]);
 
   if (!supabase) {
     return (
@@ -410,9 +423,16 @@ export default function SysAdminPage() {
                 Aktualisieren
               </button>
             </div>
+            <input
+              type="search"
+              placeholder="Verein suchen..."
+              value={clubSearch}
+              onChange={(event) => setClubSearch(event.target.value)}
+              className="mb-4 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-600"
+            />
 
             <div className="space-y-3">
-              {clubs.map((club) => {
+              {visibleClubs.map((club) => {
                 const clubMembers = membersByClub.get(club.id) ?? [];
                 return (
                   <div key={club.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -440,6 +460,7 @@ export default function SysAdminPage() {
                     <div className="mt-4 grid gap-2 border-t border-slate-200 pt-3 md:grid-cols-[1fr_auto_auto] md:items-center">
                       <label className="block">
                         <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Logo hochladen</span>
+                        <span className="mb-2 block text-[10px] font-medium text-slate-500">PNG, JPG, WebP oder SVG, maximal 2 MB.</span>
                         <input
                           type="file"
                           accept="image/png,image/jpeg,image/webp,image/svg+xml"
@@ -502,6 +523,12 @@ export default function SysAdminPage() {
                   </div>
                 );
               })}
+
+              {clubs.length > 0 && visibleClubs.length === 0 && (
+                <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                  Keine Vereine zur Suche gefunden.
+                </p>
+              )}
 
               {clubs.length === 0 && (
                 <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
