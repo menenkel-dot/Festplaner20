@@ -498,7 +498,6 @@ export default function Page() {
   const [newUserPassword, setNewUserPassword] = React.useState("");
   const [newUserFullName, setNewUserFullName] = React.useState("");
   const [newUserRoleId, setNewUserRoleId] = React.useState("");
-  const [newClubName, setNewClubName] = React.useState("");
   const [userAdminLoading, setUserAdminLoading] = React.useState(false);
   const remoteSyncReadyRef = React.useRef(false);
   const applyingRemoteSnapshotRef = React.useRef(false);
@@ -1128,65 +1127,6 @@ export default function Page() {
     remoteSyncReadyRef.current = false;
     setAuthMessage("Abgemeldet.");
     showToast("Von Supabase abgemeldet.", "info");
-  };
-
-  const handleCreateClub = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!supabase || !supabaseUser || !newClubName.trim()) return;
-    setUserAdminLoading(true);
-    try {
-      const clubName = newClubName.trim();
-      const baseSlug = clubName
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "") || "verein";
-      const slug = `${baseSlug}-${Number(new Date()).toString(36)}`;
-
-      const { data: club, error: clubError } = await supabase
-        .from("clubs")
-        .insert({ name: clubName, slug, created_by: supabaseUser.id })
-        .select("id,name,slug,status")
-        .single();
-      if (clubError) throw clubError;
-
-      const { data: role, error: roleError } = await supabase
-        .from("app_roles")
-        .insert({
-          club_id: club.id,
-          name: "Admin",
-          description: "Voller Zugriff auf diesen Verein",
-          permissions: FULL_ADMIN_PERMISSION_IDS,
-        })
-        .select("id")
-        .single();
-      if (roleError) throw roleError;
-
-      const { error: profileError } = await supabase.from("app_user_profiles").upsert({
-        user_id: supabaseUser.id,
-        email: supabaseUser.email ?? "",
-        full_name: String(supabaseUser.user_metadata?.full_name ?? ""),
-      });
-      if (profileError) throw profileError;
-
-      const { error: membershipError } = await supabase.from("club_memberships").upsert({
-        club_id: club.id,
-        user_id: supabaseUser.id,
-        role_id: role.id,
-      });
-      if (membershipError) throw membershipError;
-
-      const loadedClubs = await loadUserClubsFromSupabase(supabase);
-      setClubs(loadedClubs);
-      setNewClubName("");
-      handleClubChange(String(club.id));
-      showToast("Verein wurde angelegt.", "success");
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Verein konnte nicht angelegt werden.", "error");
-    } finally {
-      setUserAdminLoading(false);
-    }
   };
 
   const handleCreateRole = async (e: React.FormEvent) => {
@@ -4889,27 +4829,18 @@ export default function Page() {
 
                 <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
                   <div>
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vereine verwalten</h3>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Systemverwaltung</h3>
                     <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                      Neue Vereine können nur von System-Admins angelegt werden. Der anlegende Benutzer wird direkt Admin im neuen Verein.
+                      Vereine und initiale Vereins-Admins werden zentral in der Systemverwaltung angelegt.
                     </p>
                   </div>
-                  <form onSubmit={handleCreateClub} className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      type="text"
-                      placeholder="Neuer Vereinsname"
-                      value={newClubName}
-                      onChange={(e) => setNewClubName(e.target.value)}
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                    />
-                    <button
-                      type="submit"
-                      disabled={userAdminLoading || !newClubName.trim()}
-                      className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold px-4 py-2 rounded-lg transition-colors text-xs uppercase tracking-wider"
-                    >
-                      Verein anlegen
-                    </button>
-                  </form>
+                  <button
+                    type="button"
+                    onClick={() => window.open("/sysadmin", "_blank")}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg transition-colors text-xs uppercase tracking-wider"
+                  >
+                    /sysadmin öffnen
+                  </button>
                   {clubs.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {clubs.map((club) => (
