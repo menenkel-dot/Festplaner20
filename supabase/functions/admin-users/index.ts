@@ -155,11 +155,11 @@ Deno.serve(async (req) => {
 
     if (createError) throw createError;
 
-    const userId = created.user?.id;
-    if (!userId) throw new Error("User was not created.");
+    const createdUserId = created.user?.id;
+    if (!createdUserId) throw new Error("User was not created.");
 
     const { error: profileError } = await adminClient.from("app_user_profiles").upsert({
-      user_id: userId,
+      user_id: createdUserId,
       email,
       full_name: fullName ?? "",
     });
@@ -168,13 +168,13 @@ Deno.serve(async (req) => {
 
     const { error: membershipError } = await adminClient.from("club_memberships").upsert({
       club_id: clubId,
-      user_id: userId,
+      user_id: createdUserId,
       role_id: roleId,
     });
 
     if (membershipError) throw membershipError;
 
-    return new Response(JSON.stringify({ userId }), {
+    return new Response(JSON.stringify({ userId: createdUserId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
