@@ -2218,14 +2218,16 @@ export default function Page() {
   const checklistProgress = checklist.length > 0 
     ? Math.round((checklist.filter(c => c.completed).length / checklist.length) * 100) 
     : 0;
-  const totalTables = (festInfo.daysConfig || []).reduce((sum, day) => sum + day.tableCount, 0);
+  const reservationEnabledDays = (festInfo.daysConfig || []).filter((day) => day.reservationsEnabled);
+  const reservationEnabledDayNames = new Set(reservationEnabledDays.map((day) => day.name));
+  const totalTables = reservationEnabledDays.reduce((sum, day) => sum + day.tableCount, 0);
   const reservedTableIds = reservations
-    .filter((reservation) => reservation.status !== "Storniert")
+    .filter((reservation) => reservation.status !== "Storniert" && reservationEnabledDayNames.has(reservation.date))
     .flatMap(getReservationTableIds);
   const reservedTables = reservedTableIds.length;
   const openTables = Math.max(0, totalTables - reservedTables);
-  const pendingReservations = reservations.filter((reservation) => reservation.status === "Ausstehend").length;
-  const confirmedReservations = reservations.filter((reservation) => reservation.status === "Bestätigt").length;
+  const pendingReservations = reservations.filter((reservation) => reservation.status === "Ausstehend" && reservationEnabledDayNames.has(reservation.date)).length;
+  const confirmedReservations = reservations.filter((reservation) => reservation.status === "Bestätigt" && reservationEnabledDayNames.has(reservation.date)).length;
   const openShiftSpots = shifts.reduce((sum, shift) => sum + Math.max(0, shift.needed - shift.helpers.length), 0);
   const currentClubLogoUrl = clubs.find((club) => club.id === activeClubId)?.logoUrl ?? "";
   const brandLogoSrc = activeClubLogoUrl || currentClubLogoUrl || "/logo.png";
@@ -2272,8 +2274,8 @@ export default function Page() {
     {
       id: "dashboard:reserved_tables",
       label: "Reservierte Tische",
-      value: `${reservedTables}/${totalTables}`,
-      hint: `${openTables} Tische frei`,
+      value: totalTables > 0 ? `${reservedTables}/${totalTables}` : "Deaktiviert",
+      hint: totalTables > 0 ? `${openTables} Tische frei` : "Keine aktiven Tischreservierungen",
     },
     {
       id: "dashboard:pending_reservations",
@@ -3493,25 +3495,31 @@ export default function Page() {
                   {hasDashboardWidgetPermission("dashboard:reservations_by_day") && (
                     <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Reservierungen nach Tag</h3>
-                      <div className="space-y-3">
-                        {(festInfo.daysConfig || []).map((day) => {
-                          const count = reservations
-                            .filter((reservation) => reservation.date === day.name && reservation.status !== "Storniert")
-                            .flatMap(getReservationTableIds).length;
-                          const pct = day.tableCount > 0 ? Math.round((count / day.tableCount) * 100) : 0;
-                          return (
-                            <div key={day.id} className="space-y-1">
-                              <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                                <span>{day.name}</span>
-                                <span>{count}/{day.tableCount}</span>
+                      {reservationEnabledDays.length > 0 ? (
+                        <div className="space-y-3">
+                          {reservationEnabledDays.map((day) => {
+                            const count = reservations
+                              .filter((reservation) => reservation.date === day.name && reservation.status !== "Storniert")
+                              .flatMap(getReservationTableIds).length;
+                            const pct = day.tableCount > 0 ? Math.round((count / day.tableCount) * 100) : 0;
+                            return (
+                              <div key={day.id} className="space-y-1">
+                                <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                                  <span>{day.name}</span>
+                                  <span>{count}/{day.tableCount}</span>
+                                </div>
+                                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(100, pct)}%` }}></div>
+                                </div>
                               </div>
-                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(100, pct)}%` }}></div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-xs font-medium text-slate-500">
+                          Tischreservierungen sind aktuell für alle Festtage deaktiviert.
+                        </div>
+                      )}
                     </div>
                   )}
 
