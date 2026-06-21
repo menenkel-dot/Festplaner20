@@ -8,7 +8,7 @@ import {
   Square, FileText, ClipboardList, Euro, Check, X, Share2, 
   ExternalLink, Menu, TrendingDown, TrendingUp, HelpCircle,
   Copy, Armchair, ChevronRight, AlertCircle, Sparkles, Paperclip, FileDown,
-  LogIn, BarChart3, UserCog, ShieldCheck
+  LogIn, BarChart3, UserCog, ShieldCheck, Pencil
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import type { User } from "@supabase/supabase-js";
@@ -417,6 +417,7 @@ export default function Page() {
   const [newProgTitle, setNewProgTitle] = React.useState("");
   const [newProgLoc, setNewProgLoc] = React.useState("");
   const [newProgDesc, setNewProgDesc] = React.useState("");
+  const [editingProgramId, setEditingProgramId] = React.useState<string | null>(null);
 
   // Checklist Form
   const [newCheckTask, setNewCheckTask] = React.useState("");
@@ -1024,6 +1025,18 @@ export default function Page() {
     return item.time.split(" - ")[1] || item.time;
   };
 
+  const getProgramTimeParts = (item: ProgramItem) => {
+    const separator = " - ";
+    const separatorIndex = item.time.indexOf(separator);
+    if (separatorIndex < 0) {
+      return { day: "", clock: item.time.replace(/\s*Uhr\s*$/, "") };
+    }
+    return {
+      day: item.time.slice(0, separatorIndex),
+      clock: item.time.slice(separatorIndex + separator.length).replace(/\s*Uhr\s*$/, ""),
+    };
+  };
+
   const getReservationOptionsForDay = (dayName: string) => {
     const dayProgram = getProgramForDay(dayName);
     return dayProgram.map((item) => getProgramTimeLabel(item));
@@ -1419,12 +1432,57 @@ export default function Page() {
   };
 
   // Program Items
-  const handleAddProgram = (e: React.FormEvent) => {
+  const resetProgramForm = () => {
+    setEditingProgramId(null);
+    setNewProgClock("");
+    setNewProgTitle("");
+    setNewProgLoc("");
+    setNewProgDesc("");
+  };
+
+  const handleEditProgram = (item: ProgramItem) => {
+    const { day, clock } = getProgramTimeParts(item);
+    const availableDayNames = (festInfo.daysConfig || []).map((festDay) => festDay.name);
+    setEditingProgramId(item.id);
+    setNewProgDay(availableDayNames.includes(day) ? day : availableDayNames[0] ?? "");
+    setNewProgClock(clock);
+    setNewProgTitle(item.title);
+    setNewProgLoc(item.location);
+    setNewProgDesc(item.description);
+    setShowProgForm(true);
+  };
+
+  const handleCancelProgramForm = () => {
+    resetProgramForm();
+    setShowProgForm(false);
+  };
+
+  const handleSaveProgram = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProgDay || !newProgClock || !newProgTitle) {
       showToast("Bitte Festtag, Uhrzeit und Titel eingeben.", "error");
       return;
     }
+    if (editingProgramId) {
+      const updated = program.map((item) => {
+        if (item.id !== editingProgramId) return item;
+        return {
+          ...item,
+          time: `${newProgDay} - ${newProgClock} Uhr`,
+          title: newProgTitle,
+          location: newProgLoc || "Zeltplatz",
+          description: newProgDesc,
+          reservationTableLimit: item.reservationTableLimit ?? getDayConfigByName(newProgDay)?.tableCount ?? 16,
+        };
+      });
+      setProgram(updated);
+      saveToStorage("vfp_program_items", updated);
+      resetProgramForm();
+      setShowProgForm(false);
+      showToast("Programmpunkt aktualisiert.", "success");
+      return;
+    }
+
     const newItem: ProgramItem = {
       id: "p_" + Date.now().toString(),
       time: `${newProgDay} - ${newProgClock} Uhr`,
@@ -1443,10 +1501,7 @@ export default function Page() {
     if ((festInfo.daysConfig || []).find((day) => day.id === adminResDayId)?.name === newProgDay && !adminResTime) {
       setAdminResTime(newTimeLabel);
     }
-    setNewProgClock("");
-    setNewProgTitle("");
-    setNewProgLoc("");
-    setNewProgDesc("");
+    resetProgramForm();
     setShowProgForm(false);
     showToast("Programmpunkt hinzugefügt!");
   };
@@ -1455,6 +1510,7 @@ export default function Page() {
     const updated = program.filter(item => item.id !== id);
     setProgram(updated);
     saveToStorage("vfp_program_items", updated);
+    if (editingProgramId === id) handleCancelProgramForm();
     showToast("Programmpunkt entfernt.", "info");
   };
 
@@ -3643,12 +3699,22 @@ export default function Page() {
                             <p className="text-xs text-slate-500 leading-relaxed">{item.description}</p>
                           </div>
 
-                          <button
-                            onClick={() => handleDeleteProgram(item.id)}
-                            className="text-slate-405 hover:text-red-500 p-1 rounded transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => handleEditProgram(item)}
+                              className="text-slate-405 hover:text-blue-600 p-1 rounded transition-colors"
+                              title="Programmpunkt bearbeiten"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteProgram(item.id)}
+                              className="text-slate-405 hover:text-red-500 p-1 rounded transition-colors"
+                              title="Programmpunkt löschen"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -3658,7 +3724,10 @@ export default function Page() {
                   <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
                     {!showProgForm ? (
                       <button
-                        onClick={() => setShowProgForm(true)}
+                        onClick={() => {
+                          resetProgramForm();
+                          setShowProgForm(true);
+                        }}
                         className="w-full h-full min-h-[120px] aspect-none border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 rounded-xl flex flex-col items-center justify-center text-slate-500 hover:text-blue-600 transition-all space-y-2 group"
                       >
                         <div className="w-10 h-10 bg-slate-100 group-hover:bg-blue-100 rounded-full flex items-center justify-center transition-colors">
@@ -3670,18 +3739,22 @@ export default function Page() {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
-                            <Plus className="w-4 h-4 text-blue-600" />
-                            <span>Programmpunkt hinzufügen</span>
+                            {editingProgramId ? (
+                              <Pencil className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <Plus className="w-4 h-4 text-blue-600" />
+                            )}
+                            <span>{editingProgramId ? "Programmpunkt bearbeiten" : "Programmpunkt hinzufügen"}</span>
                           </h3>
                           <button 
-                            onClick={() => setShowProgForm(false)}
+                            onClick={handleCancelProgramForm}
                             className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         </div>
 
-                        <form onSubmit={handleAddProgram} className="space-y-3">
+                        <form onSubmit={handleSaveProgram} className="space-y-3">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
                               <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
@@ -3753,7 +3826,7 @@ export default function Page() {
                             type="submit"
                             className="w-full bg-blue-600 hover:bg-blue-750 text-white font-semibold py-2 px-4 rounded-lg shadow-sm transition-colors text-xs uppercase"
                           >
-                            Speichern
+                            {editingProgramId ? "Änderungen speichern" : "Speichern"}
                           </button>
                         </form>
                       </div>
