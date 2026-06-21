@@ -290,7 +290,7 @@ async function replaceFestivalChildren(
 
 export async function saveActiveFestivalToSupabase(
   supabase: SupabaseClient,
-  user: User,
+  user: Pick<User, "id">,
   snapshot: FestPlanerSnapshot,
   clubId: string,
   festivalId?: string | null,

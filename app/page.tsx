@@ -152,6 +152,7 @@ const DASHBOARD_WIDGET_PERMISSIONS = [
 const DASHBOARD_WIDGET_PERMISSION_IDS = DASHBOARD_WIDGET_PERMISSIONS.map((permission) => permission.id);
 const ADMIN_PERMISSION_IDS = ADMIN_PERMISSIONS.map((permission) => permission.id);
 const FULL_ADMIN_PERMISSION_IDS = [...ADMIN_PERMISSION_IDS, ...DASHBOARD_WIDGET_PERMISSION_IDS];
+const PLANNING_WRITE_PERMISSION_IDS = ["info", "meetings", "shifts", "reservations", "users"];
 
 interface AppRole {
   id: string;
@@ -496,6 +497,7 @@ export default function Page() {
     }
   }, []);
   const [supabaseUser, setSupabaseUser] = React.useState<User | null>(null);
+  const supabaseUserId = supabaseUser?.id ?? null;
   const [authEmail, setAuthEmail] = React.useState("");
   const [authPassword, setAuthPassword] = React.useState("");
   const [authLoading, setAuthLoading] = React.useState(false);
@@ -641,7 +643,7 @@ export default function Page() {
   }, [supabase]);
 
   React.useEffect(() => {
-    if (!supabase || !supabaseUser || !isMounted || appMode !== "admin") return;
+    if (!supabase || !supabaseUserId || !isMounted || appMode !== "admin") return;
 
     let active = true;
     loadUserClubsFromSupabase(supabase)
@@ -664,7 +666,7 @@ export default function Page() {
     return () => {
       active = false;
     };
-  }, [appMode, isMounted, supabase, supabaseUser]);
+  }, [appMode, isMounted, supabase, supabaseUserId]);
 
   const saveToStorage = (key: string, data: any) => {
     localStorage.setItem(key, JSON.stringify(data));
@@ -734,7 +736,7 @@ export default function Page() {
   }, []);
 
   React.useEffect(() => {
-    if (!supabase || !supabaseUser || !isMounted || appMode !== "admin" || !activeClubId) {
+    if (!supabase || !supabaseUserId || !isMounted || appMode !== "admin" || !activeClubId) {
       remoteSyncReadyRef.current = false;
       return;
     }
@@ -779,26 +781,28 @@ export default function Page() {
       active = false;
       clearTimeout(messageTimer);
     };
-  }, [activeClubId, appMode, applyRemoteSnapshot, isMounted, supabase, supabaseUser]);
+  }, [activeClubId, appMode, applyRemoteSnapshot, isMounted, supabase, supabaseUserId]);
 
   React.useEffect(() => {
-    if (!supabase || !supabaseUser || !activeClubId || !remoteSyncReadyRef.current || applyingRemoteSnapshotRef.current) return;
+    if (!supabase || !supabaseUserId || !activeClubId || !remoteSyncReadyRef.current || applyingRemoteSnapshotRef.current) return;
 
     const snapshot = getCurrentSnapshot();
     const payload = JSON.stringify(snapshot);
     if (payload === lastSyncedPayloadRef.current) return;
+    const isFinanceOnlyEditor = currentPermissions.includes("costs")
+      && !PLANNING_WRITE_PERMISSION_IDS.some((permission) => currentPermissions.includes(permission));
 
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     setSyncMessage("Speichere...");
 
     syncTimerRef.current = setTimeout(() => {
       const savePromise =
-        !currentPermissions.includes("users") && currentPermissions.includes("costs") && activeFestivalId
+        isFinanceOnlyEditor && activeFestivalId
           ? saveFinancialItemsToSupabase(supabase, activeFestivalId, {
               finances: snapshot.finances,
               budget: snapshot.budget,
             }).then(() => activeFestivalId)
-          : saveActiveFestivalToSupabase(supabase, supabaseUser, snapshot, activeClubId, activeFestivalId);
+          : saveActiveFestivalToSupabase(supabase, { id: supabaseUserId }, snapshot, activeClubId, activeFestivalId);
 
       savePromise
         .then((festivalId) => {
@@ -816,7 +820,7 @@ export default function Page() {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [activeClubId, activeFestivalId, currentPermissions, getCurrentSnapshot, supabase, supabaseUser]);
+  }, [activeClubId, activeFestivalId, currentPermissions, getCurrentSnapshot, supabase, supabaseUserId]);
 
   const hasPermission = (permission: string) => {
     return currentPermissions.includes(permission);
@@ -861,7 +865,7 @@ export default function Page() {
   };
 
   const loadUserAdminData = React.useCallback(async () => {
-    if (!supabase || !supabaseUser || !activeClubId) return;
+    if (!supabase || !supabaseUserId || !activeClubId) return;
 
     const [rolesResult, membershipsResult, profilesResult, currentProfileResult, linksResult] = await Promise.all([
       supabase.from("app_roles").select("id,name,description,permissions").eq("club_id", activeClubId).order("name"),
@@ -871,7 +875,7 @@ export default function Page() {
         .from("club_memberships")
         .select("role:app_roles(name,permissions)")
         .eq("club_id", activeClubId)
-        .eq("user_id", supabaseUser.id)
+        .eq("user_id", supabaseUserId)
         .maybeSingle(),
       loadPublicLinksFromSupabase(supabase, activeClubId),
     ]);
@@ -907,10 +911,10 @@ export default function Page() {
       : Array.isArray(profilePermissions) && profilePermissions.length
         ? profilePermissions.map(String)
         : ADMIN_PERMISSION_IDS);
-  }, [activeClubId, supabase, supabaseUser]);
+  }, [activeClubId, supabase, supabaseUserId]);
 
   React.useEffect(() => {
-    if (!supabaseUser || !activeClubId) return;
+    if (!supabaseUserId || !activeClubId) return;
     const timer = setTimeout(() => {
       loadUserAdminData().catch((error) => {
         console.error("User admin data failed", error);
@@ -918,7 +922,7 @@ export default function Page() {
       });
     }, 0);
     return () => clearTimeout(timer);
-  }, [activeClubId, loadUserAdminData, supabaseUser]);
+  }, [activeClubId, loadUserAdminData, supabaseUserId]);
 
   React.useEffect(() => {
     if (!supabase || !activeClubId || !activeFestivalId || appMode !== "admin") return;
