@@ -7,7 +7,7 @@ import {
   Calendar, Clock, MapPin, Users, Plus, Trash2, CheckSquare, 
   Square, FileText, ClipboardList, Euro, Check, X, Share2, 
   ExternalLink, Menu, TrendingDown, TrendingUp, HelpCircle,
-  Copy, Armchair, ChevronRight, AlertCircle, Sparkles, Paperclip, FileDown,
+  Copy, Armchair, Table2, ChevronRight, AlertCircle, Sparkles, Paperclip, FileDown,
   LogIn, BarChart3, UserCog, ShieldCheck, Pencil
 } from "lucide-react";
 import { jsPDF } from "jspdf";
@@ -3335,7 +3335,7 @@ export default function Page() {
             }`}
           >
             <span className="flex items-center space-x-3">
-              <Armchair className="w-4 h-4 shrink-0" />
+              <Table2 className="w-4 h-4 shrink-0" />
               <span>Reservierungen</span>
             </span>
             <ChevronRight className="w-3.5 h-3.5 opacity-60" />
