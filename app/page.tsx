@@ -2598,7 +2598,7 @@ export default function Page() {
               </div>
             </div>
             <div className="flex items-center space-x-2 text-emerald-600 text-xs tracking-widest uppercase font-bold mb-2">
-              <Armchair className="w-4 h-4 text-emerald-500" />
+              <Table2 className="w-4 h-4 text-emerald-500" />
               <span>Gäste Reservierungsportal</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mb-2 leading-tight">
@@ -2626,7 +2626,7 @@ export default function Page() {
             <div className="lg:col-span-7 space-y-6">
               <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-sm">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center space-x-1.5">
-                  <Armchair className="w-4.5 h-4.5 text-emerald-600" />
+                  <Table2 className="w-4.5 h-4.5 text-emerald-600" />
                   <span>Schritt 1: Reservierung auswählen</span>
                 </h3>
 
