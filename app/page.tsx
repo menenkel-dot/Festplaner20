@@ -1079,7 +1079,7 @@ export default function Page() {
   };
 
   const getReservationUsesTentPlan = (dayName: string, timeLabel: string) => {
-    return getReservationProgram(dayName, timeLabel)?.reservationUsesTentPlan !== false;
+    return getReservationProgram(dayName, timeLabel)?.reservationUsesTentPlan === true;
   };
 
   const getReservationTableLimit = (dayName: string, timeLabel: string) => {
@@ -1493,7 +1493,7 @@ export default function Page() {
       title: newProgTitle,
       location: newProgLoc || "Zeltplatz",
       description: newProgDesc,
-      reservationUsesTentPlan: true,
+      reservationUsesTentPlan: false,
       reservationTableLimit: getDayConfigByName(newProgDay)?.tableCount ?? 16,
     };
     const updated = [...program, newItem];
@@ -4639,6 +4639,7 @@ export default function Page() {
                           : reservationOptions[0] || "";
                         const dayReservations = reservations.filter(r => r.date === currentDay.name && r.time === selectedAdminTime);
                         const dayProgram = getProgramForDay(currentDay.name);
+                        const selectedProgram = getReservationProgram(currentDay.name, selectedAdminTime);
                         const selectedProgramUsesTentPlan = getReservationUsesTentPlan(currentDay.name, selectedAdminTime);
                         const selectedProgramTableLimit = getReservationTableLimit(currentDay.name, selectedAdminTime);
                         const selectedProgramReservedTables = getReservedTableCountForSlot(currentDay.name, selectedAdminTime);
@@ -4646,49 +4647,89 @@ export default function Page() {
                         return (
                           <div className="space-y-4">
                             {/* Admin Controls for the Day */}
-                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs flex flex-col sm:flex-row items-center gap-4">
-                              <label className="flex items-center space-x-2 font-medium text-slate-700">
-                                <input 
-                                  type="checkbox" 
-                                  className="rounded text-emerald-600 focus:ring-emerald-500"
-                                  checked={currentDay.reservationsEnabled}
-                                  onChange={(e) => {
-                                    updateFestDay(adminResDayId, { reservationsEnabled: e.target.checked });
-                                  }}
-                                />
-                                <span>Reservierungen an diesem Tag aktivieren</span>
-                              </label>
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs space-y-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                                <label className="flex items-center space-x-2 font-medium text-slate-700">
+                                  <input
+                                    type="checkbox"
+                                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                                    checked={currentDay.reservationsEnabled}
+                                    onChange={(e) => {
+                                      updateFestDay(adminResDayId, { reservationsEnabled: e.target.checked });
+                                    }}
+                                  />
+                                  <span>Reservierungen an diesem Tag aktivieren</span>
+                                </label>
 
-                              <div className="h-4 w-px bg-slate-300 hidden sm:block"></div>
+                                <div className="h-4 w-px bg-slate-300 hidden sm:block"></div>
 
-                              <div className="flex items-center space-x-2">
-                                <span className="font-medium text-slate-500">Tische gesamt:</span>
-                                <input 
-                                  type="number" 
-                                  className="w-16 px-2 py-1 bg-white border border-slate-300 rounded focus:outline-none focus:border-emerald-500"
-                                  value={currentDay.tableCount}
-                                  onChange={(e) => {
-                                    const val = parseInt(e.target.value) || 16;
-                                    updateFestDay(adminResDayId, { tableCount: val });
-                                  }}
-                                />
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-medium text-slate-500">Tische gesamt:</span>
+                                  <input
+                                    type="number"
+                                    className="w-16 px-2 py-1 bg-white border border-slate-300 rounded focus:outline-none focus:border-emerald-500"
+                                    value={currentDay.tableCount}
+                                    onChange={(e) => {
+                                      const val = parseInt(e.target.value) || 16;
+                                      updateFestDay(adminResDayId, { tableCount: val });
+                                    }}
+                                  />
+                                </div>
+
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-medium text-slate-500">Reihen (Spalten):</span>
+                                  <select
+                                    className="px-2 py-1 bg-white border border-slate-300 rounded focus:outline-none focus:border-emerald-500"
+                                    value={currentDay.gridCols}
+                                    onChange={(e) => {
+                                      updateFestDay(adminResDayId, { gridCols: parseInt(e.target.value) || 4 });
+                                    }}
+                                  >
+                                    <option value={2}>2 Spalten</option>
+                                    <option value={4}>4 Spalten</option>
+                                    <option value={6}>6 Spalten</option>
+                                    <option value={8}>8 Spalten</option>
+                                    <option value={10}>10 Spalten</option>
+                                  </select>
+                                </div>
                               </div>
 
-                              <div className="flex items-center space-x-2">
-                                <span className="font-medium text-slate-500">Reihen (Spalten):</span>
-                                <select 
-                                  className="px-2 py-1 bg-white border border-slate-300 rounded focus:outline-none focus:border-emerald-500"
-                                  value={currentDay.gridCols}
-                                  onChange={(e) => {
-                                    updateFestDay(adminResDayId, { gridCols: parseInt(e.target.value) || 4 });
-                                  }}
-                                >
-                                  <option value={2}>2 Spalten</option>
-                                  <option value={4}>4 Spalten</option>
-                                  <option value={6}>6 Spalten</option>
-                                  <option value={8}>8 Spalten</option>
-								  <option value={10}>10 Spalten</option>
-                                </select>
+                              <div className="border-t border-slate-200 pt-3">
+                                {selectedProgram ? (
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="space-y-1">
+                                      <label className="flex items-center space-x-2 font-medium text-slate-700">
+                                        <input
+                                          type="checkbox"
+                                          className="rounded text-emerald-600 focus:ring-emerald-500"
+                                          checked={selectedProgram.reservationUsesTentPlan === true}
+                                          onChange={(e) => updateProgramReservationSettings(selectedProgram.id, { reservationUsesTentPlan: e.target.checked })}
+                                        />
+                                        <span>Zeltplan nutzen</span>
+                                      </label>
+                                      <p className="pl-5 text-[10px] font-medium text-slate-500">
+                                        Für: {selectedProgram.title} ({selectedProgram.time.split(" - ")[1] || selectedProgram.time})
+                                      </p>
+                                    </div>
+                                    {selectedProgram.reservationUsesTentPlan !== true && (
+                                      <label className="flex items-center space-x-2">
+                                        <span className="font-medium text-slate-500">Max. Tische für Programmpunkt:</span>
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          max={500}
+                                          className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:outline-none"
+                                          value={selectedProgram.reservationTableLimit ?? currentDay.tableCount}
+                                          onChange={(e) => updateProgramReservationSettings(selectedProgram.id, { reservationTableLimit: Math.max(1, Number(e.target.value) || 1) })}
+                                        />
+                                      </label>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-[10px] font-medium text-slate-500">
+                                    Zeltplan nutzen kann aktiviert werden, sobald für diesen Tag ein Programmpunkt angelegt ist.
+                                  </p>
+                                )}
                               </div>
                             </div>
 
@@ -4726,30 +4767,6 @@ export default function Page() {
                                         <span className="text-blue-700 font-bold shrink-0">{item.time.split(" - ")[1]}</span>
                                       </div>
                                       {item.location && <p className="text-[10px] text-slate-500 mt-1 truncate">{item.location}</p>}
-                                      <div className="flex flex-col gap-2 rounded-md border border-slate-100 bg-slate-50/80 p-2">
-                                        <label className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                                          <span>Zeltplan nutzen</span>
-                                          <input
-                                            type="checkbox"
-                                            className="rounded text-emerald-600 focus:ring-emerald-500"
-                                            checked={item.reservationUsesTentPlan !== false}
-                                            onChange={(e) => updateProgramReservationSettings(item.id, { reservationUsesTentPlan: e.target.checked })}
-                                          />
-                                        </label>
-                                        {item.reservationUsesTentPlan === false && (
-                                          <label className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                                            <span>Max. Tische</span>
-                                            <input
-                                              type="number"
-                                              min={1}
-                                              max={500}
-                                              className="w-20 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:outline-none"
-                                              value={item.reservationTableLimit ?? currentDay.tableCount}
-                                              onChange={(e) => updateProgramReservationSettings(item.id, { reservationTableLimit: Math.max(1, Number(e.target.value) || 1) })}
-                                            />
-                                          </label>
-                                        )}
-                                      </div>
                                     </div>
                                   ))}
                                 </div>

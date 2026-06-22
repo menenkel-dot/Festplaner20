@@ -176,7 +176,7 @@ async function replaceFestivalChildren(
         title: item.title,
         location: item.location,
         description: item.description,
-        reservation_uses_tent_plan: item.reservationUsesTentPlan ?? true,
+        reservation_uses_tent_plan: item.reservationUsesTentPlan ?? false,
         reservation_table_limit: Math.max(1, item.reservationTableLimit ?? 16),
         sort_order: index,
       })),
@@ -545,7 +545,7 @@ export async function loadClubFestivalFromSupabase(
       title: String(item.title),
       location: String(item.location),
       description: String(item.description),
-      reservationUsesTentPlan: item.reservation_uses_tent_plan !== false,
+      reservationUsesTentPlan: item.reservation_uses_tent_plan === true,
       reservationTableLimit: Number(item.reservation_table_limit ?? 16),
     })),
     checklist: (checklistResult.data ?? []).map((item) => ({
