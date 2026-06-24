@@ -4302,18 +4302,20 @@ export default function Page() {
                                       <button
                                         type="button"
                                         onClick={() => handleEditShift(s)}
-                                        className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                        title="Schicht bearbeiten"
+                                        aria-label="Schicht bearbeiten"
                                       >
                                         <Pencil className="w-3.5 h-3.5" />
-                                        <span>Bearbeiten</span>
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => handleDeleteShift(s.id)}
-                                        className="inline-flex items-center gap-1 rounded-md border border-rose-100 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-600 transition-colors hover:bg-rose-50"
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-100 bg-white text-rose-600 transition-colors hover:bg-rose-50"
+                                        title="Schicht löschen"
+                                        aria-label="Schicht löschen"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
-                                        <span>Löschen</span>
                                       </button>
                                     </div>
                                   </div>
