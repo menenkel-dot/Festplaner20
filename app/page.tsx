@@ -440,6 +440,7 @@ export default function Page() {
   const [newShiftRole, setNewShiftRole] = React.useState("");
   const [newShiftNeeded, setNewShiftNeeded] = React.useState(3);
   const [newShiftNotes, setNewShiftNotes] = React.useState("");
+  const [editingShiftId, setEditingShiftId] = React.useState<string | null>(null);
   const [shiftDayFilter, setShiftDayFilter] = React.useState("Alle");
 
   // Reservierung Admin Form
@@ -1614,27 +1615,68 @@ export default function Page() {
   };
 
   // Shifts (Schichten)
-  const handleAddShift = (e: React.FormEvent) => {
+  const resetShiftForm = () => {
+    setEditingShiftId(null);
+    setNewShiftTime("");
+    setNewShiftRole("");
+    setNewShiftNeeded(3);
+    setNewShiftNotes("");
+  };
+
+  const handleEditShift = (shift: Shift) => {
+    setEditingShiftId(shift.id);
+    setNewShiftDay(shift.day);
+    setNewShiftTime(shift.time);
+    setNewShiftRole(shift.role);
+    setNewShiftNeeded(shift.needed);
+    setNewShiftNotes(shift.notes || "");
+    setShowShiftForm(true);
+  };
+
+  const handleCancelShiftForm = () => {
+    resetShiftForm();
+    setShowShiftForm(false);
+  };
+
+  const handleSaveShift = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newShiftTime || !newShiftRole) {
       showToast("Bitte Arbeitszeit und Rolle ausfüllen.", "error");
       return;
     }
+    if (editingShiftId) {
+      const updated = shifts.map((shift) => {
+        if (shift.id !== editingShiftId) return shift;
+        return {
+          ...shift,
+          day: newShiftDay,
+          time: newShiftTime,
+          role: newShiftRole,
+          needed: Math.max(1, Number(newShiftNeeded) || 1),
+          notes: newShiftNotes || undefined,
+        };
+      });
+      setShifts(updated);
+      saveToStorage("vfp_shifts", updated);
+      resetShiftForm();
+      setShowShiftForm(false);
+      showToast("Schicht aktualisiert.", "success");
+      return;
+    }
+
     const newItem: Shift = {
       id: "s_" + Date.now().toString(),
       day: newShiftDay,
       time: newShiftTime,
       role: newShiftRole,
-      needed: Number(newShiftNeeded),
+      needed: Math.max(1, Number(newShiftNeeded) || 1),
       helpers: [],
       notes: newShiftNotes || undefined
     };
     const updated = [...shifts, newItem];
     setShifts(updated);
     saveToStorage("vfp_shifts", updated);
-    setNewShiftTime("");
-    setNewShiftRole("");
-    setNewShiftNotes("");
+    resetShiftForm();
     setShowShiftForm(false);
     showToast("Neue Schicht ausgeschrieben!");
   };
@@ -1643,6 +1685,7 @@ export default function Page() {
     const updated = shifts.filter(s => s.id !== id);
     setShifts(updated);
     saveToStorage("vfp_shifts", updated);
+    if (editingShiftId === id) handleCancelShiftForm();
     showToast("Ausschreibung gelöscht.", "info");
   };
 
@@ -4249,20 +4292,30 @@ export default function Page() {
                               const progressPercent = Math.min(100, Math.round((filled / s.needed) * 100));
 
                               return (
-                                <div key={s.id} className="p-4 bg-slate-50/50 border border-slate-200 rounded-lg space-y-3 relative group">
-                                  
-                                  <button
-                                    onClick={() => handleDeleteShift(s.id)}
-                                    className="absolute top-3 right-3 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 p-1"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-
-                                  <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                <div key={s.id} className="p-4 bg-slate-50/50 border border-slate-200 rounded-lg space-y-3">
+                                  <div className="flex justify-between items-start gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                                     <span className="text-blue-600 flex items-center space-x-1">
                                       <Clock className="w-3 h-3" />
                                       <span>{s.time}</span>
                                     </span>
+                                    <div className="flex shrink-0 items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleEditShift(s)}
+                                        className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                        <span>Bearbeiten</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteShift(s.id)}
+                                        className="inline-flex items-center gap-1 rounded-md border border-rose-100 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-600 transition-colors hover:bg-rose-50"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span>Löschen</span>
+                                      </button>
+                                    </div>
                                   </div>
 
                                   <div>
@@ -4358,7 +4411,10 @@ export default function Page() {
                   <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
                     {!showShiftForm ? (
                       <button
-                        onClick={() => setShowShiftForm(true)}
+                        onClick={() => {
+                          resetShiftForm();
+                          setShowShiftForm(true);
+                        }}
                         className="w-full h-full min-h-[120px] aspect-none border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 rounded-xl flex flex-col items-center justify-center text-slate-500 hover:text-blue-600 transition-all space-y-2 group"
                       >
                         <div className="w-10 h-10 bg-slate-100 group-hover:bg-blue-100 rounded-full flex items-center justify-center transition-colors">
@@ -4370,18 +4426,22 @@ export default function Page() {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
-                            <Plus className="w-4 h-4 text-blue-600" />
-                            <span>Schicht ausschreiben</span>
+                            {editingShiftId ? (
+                              <Pencil className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <Plus className="w-4 h-4 text-blue-600" />
+                            )}
+                            <span>{editingShiftId ? "Schicht bearbeiten" : "Schicht ausschreiben"}</span>
                           </h3>
                           <button 
-                            onClick={() => setShowShiftForm(false)}
+                            onClick={handleCancelShiftForm}
                             className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         </div>
                         
-                        <form onSubmit={handleAddShift} className="space-y-3">
+                        <form onSubmit={handleSaveShift} className="space-y-3">
                           <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
                               Wochentag / Datum *
@@ -4458,7 +4518,7 @@ export default function Page() {
                             type="submit"
                             className="w-full bg-blue-600 hover:bg-blue-750 text-white font-semibold py-2 px-4 rounded-lg shadow-sm transition-colors text-xs uppercase"
                           >
-                            Schicht veröffentlichen
+                            {editingShiftId ? "Änderungen speichern" : "Schicht veröffentlichen"}
                           </button>
                         </form>
                       </div>
