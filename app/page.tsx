@@ -8,7 +8,7 @@ import {
   Square, FileText, ClipboardList, Euro, Check, X, Share2, 
   ExternalLink, Menu, TrendingDown, TrendingUp, HelpCircle,
   Copy, Armchair, Table2, ChevronRight, AlertCircle, Sparkles, Paperclip, FileDown,
-  LogIn, BarChart3, UserCog, ShieldCheck, Pencil
+  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import type { User } from "@supabase/supabase-js";
@@ -136,7 +136,7 @@ const ADMIN_PERMISSIONS = [
   { id: "shifts", label: "Helfer & Schichtplan" },
   { id: "reservations", label: "Reservierungen" },
   { id: "costs", label: "Finanzen & Kosten" },
-  { id: "users", label: "Benutzer & Rollen" },
+  { id: "users", label: "Einstellungen" },
 ];
 
 const DASHBOARD_WIDGET_PERMISSIONS = [
@@ -167,6 +167,54 @@ interface AppUserProfile {
   full_name: string;
   role_id: string | null;
 }
+
+interface ClubMailSettingsForm {
+  senderName: string;
+  senderEmail: string;
+  replyToEmail: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpUsername: string;
+  smtpPassword: string;
+  hasPassword: boolean;
+  subjectTemplate: string;
+  bodyTemplate: string;
+  configured: boolean;
+  updatedAt?: string;
+}
+
+const DEFAULT_MAIL_SUBJECT = "Reservierungsbestätigung für {{fest_name}}";
+const DEFAULT_MAIL_BODY = `Hallo {{gast_name}},
+
+vielen Dank für deine Reservierungsanfrage.
+
+Wir bestätigen hiermit deine Reservierung für {{fest_name}}.
+
+Datum: {{datum}}
+Uhrzeit: {{uhrzeit}}
+Tisch(e): {{tische}}
+Anzahl Tische: {{anzahl_tische}}
+
+Bei Rückfragen antworte bitte direkt auf diese E-Mail.
+
+Viele Grüße
+{{verein_name}}`;
+
+const DEFAULT_MAIL_SETTINGS: ClubMailSettingsForm = {
+  senderName: "",
+  senderEmail: "",
+  replyToEmail: "",
+  smtpHost: "",
+  smtpPort: 587,
+  smtpSecure: false,
+  smtpUsername: "",
+  smtpPassword: "",
+  hasPassword: false,
+  subjectTemplate: DEFAULT_MAIL_SUBJECT,
+  bodyTemplate: DEFAULT_MAIL_BODY,
+  configured: false,
+};
 
 const BrandLogo = ({
   src,
@@ -222,6 +270,12 @@ const normalizeStoredData = <T,>(value: T): T => {
     ) as T;
   }
   return value;
+};
+
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) return String((error as { message?: unknown }).message);
+  return "Unbekannter Fehler";
 };
 
 const LOCAL_STORAGE_DATA_KEYS = [
@@ -527,6 +581,12 @@ export default function Page() {
   const [newUserFullName, setNewUserFullName] = React.useState("");
   const [newUserRoleId, setNewUserRoleId] = React.useState("");
   const [userAdminLoading, setUserAdminLoading] = React.useState(false);
+  const [mailSettings, setMailSettings] = React.useState<ClubMailSettingsForm>(DEFAULT_MAIL_SETTINGS);
+  const [mailSettingsLoading, setMailSettingsLoading] = React.useState(false);
+  const [mailSettingsSaving, setMailSettingsSaving] = React.useState(false);
+  const [mailSettingsTesting, setMailSettingsTesting] = React.useState(false);
+  const [sendingReservationMailId, setSendingReservationMailId] = React.useState<string | null>(null);
+  const [sentReservationMailIds, setSentReservationMailIds] = React.useState<string[]>([]);
   const [nextStepsOpen, setNextStepsOpen] = React.useState(false);
   const remoteSyncReadyRef = React.useRef(false);
   const applyingRemoteSnapshotRef = React.useRef(false);
@@ -1407,6 +1467,110 @@ export default function Page() {
     showToast(`Teilnahmelink kopiert! (${mode === "helfer" ? "Helfer-Anmeldung" : "Tisch-Reservierung"})`, "success");
   };
 
+  const normalizeMailSettings = (settings: Partial<ClubMailSettingsForm> | null | undefined): ClubMailSettingsForm => ({
+    ...DEFAULT_MAIL_SETTINGS,
+    ...(settings ?? {}),
+    smtpPassword: "",
+    smtpPort: Number(settings?.smtpPort ?? DEFAULT_MAIL_SETTINGS.smtpPort),
+    smtpSecure: Boolean(settings?.smtpSecure),
+    hasPassword: Boolean(settings?.hasPassword),
+    configured: Boolean(settings?.configured),
+    subjectTemplate: settings?.subjectTemplate || DEFAULT_MAIL_SUBJECT,
+    bodyTemplate: settings?.bodyTemplate || DEFAULT_MAIL_BODY,
+  });
+
+  const loadClubMailSettings = React.useCallback(async () => {
+    if (!supabase || !activeClubId || !supabaseUserId) return;
+    setMailSettingsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("club-mail-settings", {
+        body: { action: "get", clubId: activeClubId },
+      });
+      if (error) throw new Error(String((data as { error?: string } | null)?.error || error.message));
+      setMailSettings(normalizeMailSettings((data as { settings?: Partial<ClubMailSettingsForm> } | null)?.settings));
+    } catch (error) {
+      console.error("Mail settings load failed", error);
+      showToast(`Mailsettings konnten nicht geladen werden: ${getErrorMessage(error)}`, "error");
+    } finally {
+      setMailSettingsLoading(false);
+    }
+  }, [activeClubId, supabase, supabaseUserId]);
+
+  const handleSaveMailSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !activeClubId) return;
+    setMailSettingsSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("club-mail-settings", {
+        body: {
+          action: "save",
+          clubId: activeClubId,
+          settings: mailSettings,
+        },
+      });
+      if (error) throw new Error(String((data as { error?: string } | null)?.error || error.message));
+      setMailSettings(normalizeMailSettings((data as { settings?: Partial<ClubMailSettingsForm> } | null)?.settings));
+      showToast("Mailsettings gespeichert.", "success");
+    } catch (error) {
+      showToast(`Mailsettings konnten nicht gespeichert werden: ${getErrorMessage(error)}`, "error");
+    } finally {
+      setMailSettingsSaving(false);
+    }
+  };
+
+  const handleTestMailSettings = async () => {
+    if (!supabase || !activeClubId) return;
+    setMailSettingsTesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("club-mail-settings", {
+        body: { action: "test", clubId: activeClubId },
+      });
+      if (error) throw new Error(String((data as { error?: string } | null)?.error || error.message));
+      showToast("Testmail wurde gesendet.", "success");
+    } catch (error) {
+      showToast(`Testmail fehlgeschlagen: ${getErrorMessage(error)}`, "error");
+    } finally {
+      setMailSettingsTesting(false);
+    }
+  };
+
+  const handleSendReservationConfirmation = async (reservation: Reservation) => {
+    if (!supabase || !activeClubId || !activeFestivalId) return;
+    if (reservation.status !== "Bestätigt") {
+      showToast("Reservierung muss zuerst bestätigt werden.", "error");
+      return;
+    }
+    setSendingReservationMailId(reservation.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-reservation-confirmation", {
+        body: {
+          clubId: activeClubId,
+          festivalId: activeFestivalId,
+          reservation,
+        },
+      });
+      if (error) throw new Error(String((data as { error?: string } | null)?.error || error.message));
+      setSentReservationMailIds((current) => Array.from(new Set([...current, reservation.id])));
+      showToast("Bestätigung wurde gesendet.", "success");
+    } catch (error) {
+      showToast(`Bestätigung konnte nicht gesendet werden: ${getErrorMessage(error)}`, "error");
+    } finally {
+      setSendingReservationMailId(null);
+    }
+  };
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSentReservationMailIds([]);
+      if (!activeClubId || !supabaseUserId || !currentPermissions.includes("users")) {
+        setMailSettings(DEFAULT_MAIL_SETTINGS);
+        return;
+      }
+      loadClubMailSettings();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeClubId, currentPermissions, loadClubMailSettings, supabaseUserId]);
+
   // --- Data Modification Functions ---
 
   // Festival Info
@@ -2276,6 +2440,18 @@ export default function Page() {
   const brandLogoSrc = activeClubLogoUrl || currentClubLogoUrl || "/logo.png";
   const activeHelperLink = publicLinks.find((link) => link.type === "helper_signup" && link.enabled);
   const activeReservationLink = publicLinks.find((link) => link.type === "guest_reservation" && link.enabled);
+  const mailSettingsConfigured = Boolean(
+    mailSettings.configured ||
+    (
+      mailSettings.senderEmail &&
+      mailSettings.smtpHost &&
+      mailSettings.smtpPort &&
+      mailSettings.smtpUsername &&
+      mailSettings.hasPassword &&
+      mailSettings.subjectTemplate &&
+      mailSettings.bodyTemplate
+    ),
+  );
   const workflowSteps = [
     {
       label: "Verein ausgewählt",
@@ -3409,7 +3585,7 @@ export default function Page() {
           >
             <span className="flex items-center space-x-3">
               <UserCog className="w-4 h-4 shrink-0" />
-              <span>Benutzer & Rollen</span>
+              <span>Einstellungen</span>
             </span>
             <ChevronRight className="w-3.5 h-3.5 opacity-60" />
           </button>
@@ -4659,6 +4835,26 @@ export default function Page() {
                               </div>
                             )}
 
+                            {r.status === "Bestätigt" && (
+                              <div className="flex flex-col items-stretch gap-2 shrink-0 sm:items-end">
+                                {sentReservationMailIds.includes(r.id) && (
+                                  <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                                    Mail gesendet
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={!mailSettingsConfigured || sendingReservationMailId === r.id}
+                                  onClick={() => handleSendReservationConfirmation(r)}
+                                  title={mailSettingsConfigured ? "Reservierungsbestätigung per E-Mail senden" : "Mailsettings zuerst in den Einstellungen einrichten"}
+                                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700 transition-colors hover:bg-emerald-50 disabled:bg-slate-100 disabled:text-slate-400"
+                                >
+                                  <Send className="h-3.5 w-3.5" />
+                                  {sendingReservationMailId === r.id ? "Sende..." : "Bestätigung senden"}
+                                </button>
+                              </div>
+                            )}
+
                           </div>
                         ))}
                       </div>
@@ -5138,9 +5334,9 @@ export default function Page() {
                   <div className="flex items-start space-x-3">
                     <ShieldCheck className="w-5 h-5 text-blue-600 mt-0.5" />
                     <div>
-                      <h2 className="text-lg font-bold text-slate-900">Benutzer & Rollen</h2>
+                      <h2 className="text-lg font-bold text-slate-900">Einstellungen</h2>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                        Benutzer werden direkt in der Datenbank angelegt. Rollen steuern, welche Bereiche sichtbar sind.
+                        Verwalte öffentliche Portale, Mailversand, Benutzer und Rollen für diesen Verein.
                       </p>
                     </div>
                   </div>
@@ -5224,6 +5420,162 @@ export default function Page() {
                       );
                     })}
                   </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start space-x-3">
+                      <Mail className="mt-0.5 h-5 w-5 text-blue-600" />
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900">Mailversand & Templates</h3>
+                        <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
+                          Diese SMTP-Daten gelten nur für den aktuellen Verein. Das Passwort wird verschlüsselt gespeichert und hier nicht wieder angezeigt.
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                      mailSettingsConfigured
+                        ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                        : "border-amber-100 bg-amber-50 text-amber-700"
+                    }`}>
+                      {mailSettingsConfigured ? "Eingerichtet" : "Unvollständig"}
+                    </span>
+                  </div>
+
+                  <form onSubmit={handleSaveMailSettings} className="space-y-4">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Absendername</span>
+                        <input
+                          type="text"
+                          value={mailSettings.senderName}
+                          onChange={(e) => setMailSettings((current) => ({ ...current, senderName: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          placeholder="z.B. Festausschuss"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Absender-E-Mail *</span>
+                        <input
+                          type="email"
+                          value={mailSettings.senderEmail}
+                          onChange={(e) => setMailSettings((current) => ({ ...current, senderEmail: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          placeholder="reservierung@verein.at"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Antwort-an-E-Mail</span>
+                        <input
+                          type="email"
+                          value={mailSettings.replyToEmail}
+                          onChange={(e) => setMailSettings((current) => ({ ...current, replyToEmail: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          placeholder="Optional"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">SMTP Benutzername *</span>
+                        <input
+                          type="text"
+                          value={mailSettings.smtpUsername}
+                          onChange={(e) => setMailSettings((current) => ({ ...current, smtpUsername: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          placeholder="SMTP Login"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">SMTP Host *</span>
+                        <input
+                          type="text"
+                          value={mailSettings.smtpHost}
+                          onChange={(e) => setMailSettings((current) => ({ ...current, smtpHost: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          placeholder="smtp.example.at"
+                        />
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">SMTP Port *</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={65535}
+                            value={mailSettings.smtpPort}
+                            onChange={(e) => setMailSettings((current) => ({ ...current, smtpPort: Number(e.target.value) || 587 }))}
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          />
+                        </label>
+                        <label className="flex items-end">
+                          <span className="flex h-[34px] w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={mailSettings.smtpSecure}
+                              onChange={(e) => setMailSettings((current) => ({ ...current, smtpSecure: e.target.checked }))}
+                            />
+                            SSL/TLS
+                          </span>
+                        </label>
+                      </div>
+                      <label className="block space-y-1 md:col-span-2">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">SMTP Passwort {mailSettings.hasPassword ? "(gespeichert)" : "*"}</span>
+                        <input
+                          type="password"
+                          value={mailSettings.smtpPassword}
+                          onChange={(e) => setMailSettings((current) => ({ ...current, smtpPassword: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          placeholder={mailSettings.hasPassword ? "Leer lassen, um das gespeicherte Passwort zu behalten" : "SMTP Passwort eingeben"}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3">
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Betreff-Template *</span>
+                        <input
+                          type="text"
+                          value={mailSettings.subjectTemplate}
+                          onChange={(e) => setMailSettings((current) => ({ ...current, subjectTemplate: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Text-Template *</span>
+                        <textarea
+                          value={mailSettings.bodyTemplate}
+                          onChange={(e) => setMailSettings((current) => ({ ...current, bodyTemplate: e.target.value }))}
+                          rows={8}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                        />
+                      </label>
+                      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-medium leading-relaxed text-slate-500">
+                        Platzhalter: {"{{gast_name}}"}, {"{{reservierungsname}}"}, {"{{verein_name}}"}, {"{{fest_name}}"}, {"{{veranstaltungsort}}"}, {"{{datum}}"}, {"{{uhrzeit}}"}, {"{{tische}}"}, {"{{anzahl_tische}}"}, {"{{telefon}}"}, {"{{email}}"}, {"{{notizen}}"}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-[10px] font-medium text-slate-500">
+                        {mailSettingsLoading ? "Mailsettings werden geladen..." : mailSettings.hasPassword ? "Ein SMTP-Passwort ist gespeichert." : "Noch kein SMTP-Passwort gespeichert."}
+                      </p>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <button
+                          type="button"
+                          onClick={handleTestMailSettings}
+                          disabled={mailSettingsTesting || mailSettingsSaving || !mailSettings.hasPassword}
+                          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400"
+                        >
+                          {mailSettingsTesting ? "Sende..." : "Testmail senden"}
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={mailSettingsSaving}
+                          className="rounded-lg bg-blue-600 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500"
+                        >
+                          {mailSettingsSaving ? "Speichere..." : "Mailsettings speichern"}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

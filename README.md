@@ -20,9 +20,12 @@ FestPlaner ist eine Next.js-Webapp zur Planung von Vereinsfesten mit Supabase-Ba
 - `/sysadmin` ist die Systemverwaltung für globale Systemadmins.
 - `/helfer/:token` ist der öffentliche Helferlink eines Vereins.
 - `/reservierung/:token` ist der öffentliche Reservierungslink eines Vereins.
+- Reservierungsbestätigungen können über vereinseigene SMTP-Einstellungen per E-Mail gesendet werden.
 
 ## Supabase
 
 Schemaänderungen liegen in `supabase/migrations`. Edge Functions liegen in `supabase/functions` und müssen nach Änderungen ins Supabase-Projekt deployed werden.
 
 Öffentliche Links sind tokenisiert und werden serverseitig gegen Verein, Festival, Status und Linktyp validiert.
+
+Für den Mailversand muss zusätzlich das Supabase Secret `MAIL_SETTINGS_ENCRYPTION_KEY` gesetzt sein. Die Functions `club-mail-settings` und `send-reservation-confirmation` müssen deployed werden.

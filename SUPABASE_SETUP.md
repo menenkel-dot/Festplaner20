@@ -21,6 +21,8 @@ Die Werte müssen lokal in `.env.local` und im Hosting-Provider gesetzt sein.
 - `system_admins` berechtigt globale Systemadmins für `/sysadmin`.
 - `public_links` speichert tokenisierte Helfer- und Reservierungslinks pro Verein/Festival.
 - `club-logos` ist ein öffentlicher Storage-Bucket für Vereinslogos.
+- `club_mail_settings` speichert SMTP-Konfiguration und Bestätigungstemplate pro Verein.
+- `reservation_email_events` protokolliert erfolgreiche und fehlgeschlagene Reservierungsbestätigungen.
 
 ## Edge Functions
 
@@ -31,8 +33,18 @@ Aktive Functions:
 - `public-festival` für öffentliche Link-Daten.
 - `public-helper-signup` für Helfereintragungen.
 - `public-reservation-submit` für Reservierungsanfragen.
+- `club-mail-settings` für SMTP-Einstellungen und Testmails.
+- `send-reservation-confirmation` für Reservierungsbestätigungen per E-Mail.
 
 Nach Codeänderungen in `supabase/functions` müssen die betroffenen Functions deployed werden.
+
+## Secrets
+
+Zusätzlich zu den Supabase Standard-Secrets wird für verschlüsselte SMTP-Passwörter benötigt:
+
+```env
+MAIL_SETTINGS_ENCRYPTION_KEY="<lange-zufällige-geheime-zeichenfolge>"
+```
 
 ## Betriebshinweise
 
