@@ -5342,20 +5342,23 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5 shadow-sm space-y-4">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Öffentliche Portale</span>
-                      <h3 className="mt-1 text-lg font-bold text-slate-900">Helfer- und Gästezugänge</h3>
-                      <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
-                        Diese Links sind vereinsgebunden. Wenn ein Link neu generiert wird, werden alte aktive Links für dieses Portal ungültig.
-                      </p>
+                <details className="group rounded-xl border border-blue-100 bg-blue-50/40 shadow-sm">
+                  <summary className="flex cursor-pointer list-none flex-col gap-3 p-5 sm:flex-row sm:items-start sm:justify-between [&::-webkit-details-marker]:hidden">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-blue-600 transition-transform group-open:rotate-90" />
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Öffentliche Portale</span>
+                        <h3 className="mt-1 text-lg font-bold text-slate-900">Helfer- und Gästezugänge</h3>
+                        <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
+                          Diese Links sind vereinsgebunden. Wenn ein Link neu generiert wird, werden alte aktive Links für dieses Portal ungültig.
+                        </p>
+                      </div>
                     </div>
-                    <span className="rounded-full border border-blue-100 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700">
+                    <span className="ml-7 w-fit rounded-full border border-blue-100 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 sm:ml-0">
                       {publicLinks.filter((link) => link.enabled).length} aktiv
                     </span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  </summary>
+                  <div className="grid grid-cols-1 gap-4 border-t border-blue-100 px-5 pb-5 pt-4 md:grid-cols-2">
                     {[
                       { type: "helper_signup" as const, mode: "helfer" as const, label: "Helfer-Anmeldung", hint: "Für Helfer, die sich selbst in freie Schichten eintragen." },
                       { type: "guest_reservation" as const, mode: "reservierung" as const, label: "Gäste-Reservierung", hint: "Für Gäste und Vereine, die Tischreservierungen anfragen." },
@@ -5420,11 +5423,12 @@ export default function Page() {
                       );
                     })}
                   </div>
-                </div>
+                </details>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex items-start space-x-3">
+                <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <summary className="flex cursor-pointer list-none flex-col gap-3 p-6 sm:flex-row sm:items-start sm:justify-between [&::-webkit-details-marker]:hidden">
+                    <div className="flex items-start gap-3">
+                      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-blue-600 transition-transform group-open:rotate-90" />
                       <Mail className="mt-0.5 h-5 w-5 text-blue-600" />
                       <div>
                         <h3 className="text-lg font-bold text-slate-900">Mailversand & Templates</h3>
@@ -5433,16 +5437,16 @@ export default function Page() {
                         </p>
                       </div>
                     </div>
-                    <span className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                    <span className={`ml-7 w-fit shrink-0 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wider sm:ml-0 ${
                       mailSettingsConfigured
                         ? "border-emerald-100 bg-emerald-50 text-emerald-700"
                         : "border-amber-100 bg-amber-50 text-amber-700"
                     }`}>
                       {mailSettingsConfigured ? "Eingerichtet" : "Unvollständig"}
                     </span>
-                  </div>
+                  </summary>
 
-                  <form onSubmit={handleSaveMailSettings} className="space-y-4">
+                  <form onSubmit={handleSaveMailSettings} className="space-y-4 border-t border-slate-200 px-6 pb-6 pt-5">
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <label className="block space-y-1">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Absendername</span>
@@ -5576,10 +5580,25 @@ export default function Page() {
                       </div>
                     </div>
                   </form>
-                </div>
+                </details>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+                <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <summary className="flex cursor-pointer list-none flex-col gap-3 p-6 sm:flex-row sm:items-start sm:justify-between [&::-webkit-details-marker]:hidden">
+                    <div className="flex items-start gap-3">
+                      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-blue-600 transition-transform group-open:rotate-90" />
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900">Benutzer und Rollen anlegen</h3>
+                        <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
+                          Neue Vereinsbenutzer und Rollen vorbereiten, ohne die Übersichten dauerhaft aufzuklappen.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="ml-7 w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:ml-0">
+                      Formulare
+                    </span>
+                  </summary>
+                  <div className="grid grid-cols-1 gap-6 border-t border-slate-200 px-6 pb-6 pt-5 lg:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 space-y-4">
                     <div>
                       <h3 className="text-sm font-bold text-slate-900">Neue Rolle</h3>
                       <p className="mt-1 text-xs leading-relaxed text-slate-500">Lege fest, welche Bereiche Benutzer dieser Rolle sehen und bearbeiten dürfen.</p>
@@ -5653,7 +5672,7 @@ export default function Page() {
                     </form>
                   </div>
 
-                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 space-y-4">
                     <div>
                       <h3 className="text-sm font-bold text-slate-900">Neuer Benutzer</h3>
                       <p className="mt-1 text-xs leading-relaxed text-slate-500">Erstelle einen Login für diesen Verein und weise direkt eine Rolle zu.</p>
@@ -5710,20 +5729,24 @@ export default function Page() {
                         Benutzer anlegen
                       </button>
                     </form>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">Benutzerübersicht</h3>
-                      <p className="text-xs text-slate-500">Bestehende Benutzer, Rollen und Zugänge für diesen Verein.</p>
                     </div>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  </div>
+                </details>
+
+                <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <summary className="flex cursor-pointer list-none flex-col gap-3 p-6 sm:flex-row sm:items-start sm:justify-between [&::-webkit-details-marker]:hidden">
+                    <div className="flex items-start gap-3">
+                      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-blue-600 transition-transform group-open:rotate-90" />
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900">Benutzerverwaltung</h3>
+                        <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Bestehende Benutzer, Rollen und Zugänge für diesen Verein.</p>
+                      </div>
+                    </div>
+                    <span className="ml-7 w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:ml-0">
                       {appUsers.length} Benutzer
                     </span>
-                  </div>
-                  <div className="space-y-2">
+                  </summary>
+                  <div className="space-y-2 border-t border-slate-200 px-6 pb-6 pt-5">
                     {appUsers.map((user) => (
                       <div key={user.user_id} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_220px_auto] sm:items-center">
                         <div className="min-w-0">
@@ -5757,19 +5780,22 @@ export default function Page() {
                       <p className="text-xs text-slate-500">Noch keine Benutzerprofile vorhanden.</p>
                     )}
                   </div>
-                </div>
+                </details>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">Rollenübersicht</h3>
-                      <p className="text-xs text-slate-500">Berechtigungen kompakt prüfen und Rollen bearbeiten.</p>
+                <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <summary className="flex cursor-pointer list-none flex-col gap-3 p-6 sm:flex-row sm:items-start sm:justify-between [&::-webkit-details-marker]:hidden">
+                    <div className="flex items-start gap-3">
+                      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-blue-600 transition-transform group-open:rotate-90" />
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900">Rollenverwaltung</h3>
+                        <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Berechtigungen kompakt prüfen und Rollen bearbeiten.</p>
+                      </div>
                     </div>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <span className="ml-7 w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:ml-0">
                       {appRoles.length} Rollen
                     </span>
-                  </div>
-                  <div className="space-y-3">
+                  </summary>
+                  <div className="space-y-3 border-t border-slate-200 px-6 pb-6 pt-5">
                     {appRoles.map((role) => {
                       const isEditing = editingRoleId === role.id;
 
@@ -5912,7 +5938,7 @@ export default function Page() {
                       <p className="text-xs text-slate-500">Noch keine Rollen vorhanden.</p>
                     )}
                   </div>
-                </div>
+                </details>
               </motion.div>
             )}
 
