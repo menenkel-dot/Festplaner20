@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.106.2";
+import { sendClubAdminNotifications } from "../_shared/admin-notifications.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -264,6 +265,24 @@ Deno.serve(async (req) => {
       .single();
 
     if (insertError) throw insertError;
+
+    EdgeRuntime.waitUntil(sendClubAdminNotifications({
+      clubId: String(link.club_id),
+      festivalId: String(festival.id),
+      type: "reservation_request",
+      sourceId: String(reservation.id),
+      reservationId: String(reservation.id),
+      payload: {
+        name: displayName,
+        firstName,
+        lastName,
+        email,
+        phone,
+        date: dateLabel,
+        time: timeLabel,
+        tableCount: selectedTableIds.length,
+      },
+    }).catch((error) => console.error("Reservation notification failed", error)));
 
     return new Response(JSON.stringify({ reservation }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

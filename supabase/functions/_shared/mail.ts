@@ -1,5 +1,5 @@
 // @deno-types="npm:@types/nodemailer@6.4.16"
-import nodemailer from "nodemailer";
+import nodemailer from "npm:nodemailer@6.9.16";
 
 export const DEFAULT_MAIL_SUBJECT = "Reservierungsbestätigung für {{fest_name}}";
 

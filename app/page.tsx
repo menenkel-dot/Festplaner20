@@ -8,7 +8,7 @@ import {
   Square, FileText, ClipboardList, Euro, Check, X, Share2, 
   ExternalLink, Menu, TrendingDown, TrendingUp, HelpCircle,
   Copy, Armchair, Table2, ChevronRight, AlertCircle, Sparkles, Paperclip, FileDown,
-  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send
+  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send, Bell
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import type { User } from "@supabase/supabase-js";
@@ -183,6 +183,16 @@ interface ClubMailSettingsForm {
   configured: boolean;
   updatedAt?: string;
 }
+
+interface ClubNotificationPreferences {
+  reservationRequestsEnabled: boolean;
+  helperSignupsEnabled: boolean;
+}
+
+const DEFAULT_NOTIFICATION_PREFERENCES: ClubNotificationPreferences = {
+  reservationRequestsEnabled: false,
+  helperSignupsEnabled: false,
+};
 
 const DEFAULT_MAIL_SUBJECT = "Reservierungsbestätigung für {{fest_name}}";
 const DEFAULT_MAIL_BODY = `Hallo {{gast_name}},
@@ -569,6 +579,7 @@ export default function Page() {
   const [appRoles, setAppRoles] = React.useState<AppRole[]>([]);
   const [appUsers, setAppUsers] = React.useState<AppUserProfile[]>([]);
   const [currentPermissions, setCurrentPermissions] = React.useState<string[]>(FULL_ADMIN_PERMISSION_IDS);
+  const [currentRoleName, setCurrentRoleName] = React.useState("");
   const [newRoleName, setNewRoleName] = React.useState("");
   const [newRoleDescription, setNewRoleDescription] = React.useState("");
   const [newRolePermissions, setNewRolePermissions] = React.useState<string[]>(["dashboard", ...DASHBOARD_WIDGET_PERMISSION_IDS]);
@@ -585,6 +596,9 @@ export default function Page() {
   const [mailSettingsLoading, setMailSettingsLoading] = React.useState(false);
   const [mailSettingsSaving, setMailSettingsSaving] = React.useState(false);
   const [mailSettingsTesting, setMailSettingsTesting] = React.useState(false);
+  const [notificationPreferences, setNotificationPreferences] = React.useState<ClubNotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [notificationPreferencesLoading, setNotificationPreferencesLoading] = React.useState(false);
+  const [notificationPreferencesSaving, setNotificationPreferencesSaving] = React.useState(false);
   const [sendingReservationMailId, setSendingReservationMailId] = React.useState<string | null>(null);
   const [sentReservationMailIds, setSentReservationMailIds] = React.useState<string[]>([]);
   const [nextStepsOpen, setNextStepsOpen] = React.useState(false);
@@ -965,8 +979,12 @@ export default function Page() {
     setNewUserRoleId((current) => current || roles[0]?.id || "");
     setPublicLinks(linksResult);
 
-    const profileRole = (currentProfileResult.data as any)?.role;
+    const currentMembership = (membershipsResult.data ?? []).find((membership) => String(membership.user_id) === supabaseUserId);
+    const membershipRole = roles.find((role) => role.id === String(currentMembership?.role_id ?? ""));
+    const relationRole = (currentProfileResult.data as any)?.role;
+    const profileRole = membershipRole ?? (Array.isArray(relationRole) ? relationRole[0] : relationRole);
     const profilePermissions = profileRole?.permissions;
+    setCurrentRoleName(String(profileRole?.name ?? ""));
     setCurrentPermissions(String(profileRole?.name ?? "").toLowerCase() === "admin"
       ? FULL_ADMIN_PERMISSION_IDS
       : Array.isArray(profilePermissions) && profilePermissions.length
@@ -1534,6 +1552,55 @@ export default function Page() {
     }
   };
 
+  const loadNotificationPreferences = React.useCallback(async () => {
+    if (!supabase || !activeClubId || !supabaseUserId || currentRoleName.toLowerCase() !== "admin") {
+      setNotificationPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
+      return;
+    }
+    setNotificationPreferencesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("club_notification_preferences")
+        .select("reservation_requests_enabled,helper_signups_enabled")
+        .eq("club_id", activeClubId)
+        .eq("user_id", supabaseUserId)
+        .maybeSingle();
+      if (error) throw error;
+      setNotificationPreferences({
+        reservationRequestsEnabled: Boolean(data?.reservation_requests_enabled),
+        helperSignupsEnabled: Boolean(data?.helper_signups_enabled),
+      });
+    } catch (error) {
+      console.error("Notification preferences load failed", error);
+      showToast(`Benachrichtigungen konnten nicht geladen werden: ${getErrorMessage(error)}`, "error");
+    } finally {
+      setNotificationPreferencesLoading(false);
+    }
+  }, [activeClubId, currentRoleName, supabase, supabaseUserId]);
+
+  const saveNotificationPreference = async (key: keyof ClubNotificationPreferences, enabled: boolean) => {
+    if (!supabase || !activeClubId || !supabaseUserId || currentRoleName.toLowerCase() !== "admin") return;
+    const previous = notificationPreferences;
+    const next = { ...previous, [key]: enabled };
+    setNotificationPreferences(next);
+    setNotificationPreferencesSaving(true);
+    try {
+      const { error } = await supabase.from("club_notification_preferences").upsert({
+        club_id: activeClubId,
+        user_id: supabaseUserId,
+        reservation_requests_enabled: next.reservationRequestsEnabled,
+        helper_signups_enabled: next.helperSignupsEnabled,
+      }, { onConflict: "club_id,user_id" });
+      if (error) throw error;
+      showToast("Benachrichtigungseinstellung gespeichert.", "success");
+    } catch (error) {
+      setNotificationPreferences(previous);
+      showToast(`Benachrichtigung konnte nicht gespeichert werden: ${getErrorMessage(error)}`, "error");
+    } finally {
+      setNotificationPreferencesSaving(false);
+    }
+  };
+
   const handleSendReservationConfirmation = async (reservation: Reservation) => {
     if (!supabase || !activeClubId || !activeFestivalId) return;
     if (reservation.status !== "Bestätigt") {
@@ -1570,6 +1637,11 @@ export default function Page() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [activeClubId, currentPermissions, loadClubMailSettings, supabaseUserId]);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => void loadNotificationPreferences(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadNotificationPreferences]);
 
   // --- Data Modification Functions ---
 
@@ -5424,6 +5496,69 @@ export default function Page() {
                     })}
                   </div>
                 </details>
+
+                {currentRoleName.toLowerCase() === "admin" && (
+                  <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <summary className="flex cursor-pointer list-none flex-col gap-3 p-6 sm:flex-row sm:items-start sm:justify-between [&::-webkit-details-marker]:hidden">
+                      <div className="flex items-start gap-3">
+                        <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-blue-600 transition-transform group-open:rotate-90" />
+                        <Bell className="mt-0.5 h-5 w-5 text-blue-600" />
+                        <div>
+                          <h3 className="text-lg font-bold text-slate-900">Benachrichtigungen</h3>
+                          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
+                            Wähle, bei welchen neuen Einträgen über die öffentlichen Vereinsportale du sofort per E-Mail informiert wirst.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="ml-7 w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 sm:ml-0">
+                        {[notificationPreferences.reservationRequestsEnabled, notificationPreferences.helperSignupsEnabled].filter(Boolean).length} aktiv
+                      </span>
+                    </summary>
+                    <div className="space-y-3 border-t border-slate-200 px-6 pb-6 pt-5">
+                      {!mailSettingsConfigured && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+                          Richte zuerst den Mailversand des Vereins vollständig ein. Deine Auswahl wird gespeichert, E-Mails können aber erst danach versendet werden.
+                        </div>
+                      )}
+                      {[
+                        {
+                          key: "reservationRequestsEnabled" as const,
+                          title: "Neue Reservierungsanfragen",
+                          description: "Informiert dich, sobald Gäste über den öffentlichen Reservierungslink eine neue Anfrage senden.",
+                        },
+                        {
+                          key: "helperSignupsEnabled" as const,
+                          title: "Neue Helferanmeldungen",
+                          description: "Informiert dich, sobald sich jemand über den öffentlichen Helferlink in eine Schicht einträgt.",
+                        },
+                      ].map((item) => (
+                        <label key={item.key} className="flex cursor-pointer flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="min-w-0">
+                            <span className="block text-sm font-bold text-slate-900">{item.title}</span>
+                            <span className="mt-1 block text-xs leading-relaxed text-slate-500">{item.description}</span>
+                          </span>
+                          <span className="flex shrink-0 items-center gap-3">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                              {notificationPreferences[item.key] ? "Aktiv" : "Inaktiv"}
+                            </span>
+                            <input
+                              type="checkbox"
+                              className="h-5 w-5 accent-blue-600"
+                              checked={notificationPreferences[item.key]}
+                              disabled={notificationPreferencesLoading || notificationPreferencesSaving}
+                              onChange={(event) => void saveNotificationPreference(item.key, event.target.checked)}
+                            />
+                          </span>
+                        </label>
+                      ))}
+                      <p className="text-[10px] font-medium text-slate-500">
+                        {notificationPreferencesLoading
+                          ? "Benachrichtigungseinstellungen werden geladen..."
+                          : `Die Benachrichtigungen werden an ${supabaseUser?.email ?? "deine hinterlegte E-Mail-Adresse"} gesendet.`}
+                      </p>
+                    </div>
+                  </details>
+                )}
 
                 <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
                   <summary className="flex cursor-pointer list-none flex-col gap-3 p-6 sm:flex-row sm:items-start sm:justify-between [&::-webkit-details-marker]:hidden">

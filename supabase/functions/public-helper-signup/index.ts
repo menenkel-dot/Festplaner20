@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.106.2";
+import { sendClubAdminNotifications } from "../_shared/admin-notifications.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,7 +72,7 @@ Deno.serve(async (req) => {
 
     const { data: shift, error: shiftError } = await adminClient
       .from("shifts")
-      .select("id,festival_id,needed,shift_helpers(helper_name)")
+      .select("id,festival_id,day_label,time_label,role,needed,shift_helpers(helper_name)")
       .eq("id", shiftId)
       .eq("festival_id", link.festival_id)
       .maybeSingle();
@@ -101,12 +102,26 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { error: insertError } = await adminClient.from("shift_helpers").insert({
+    const { data: helper, error: insertError } = await adminClient.from("shift_helpers").insert({
       shift_id: shift.id,
       helper_name: cleanedName,
-    });
+    }).select("id").single();
 
     if (insertError) throw insertError;
+
+    EdgeRuntime.waitUntil(sendClubAdminNotifications({
+      clubId: String(link.club_id),
+      festivalId: String(shift.festival_id),
+      type: "helper_signup",
+      sourceId: String(helper.id),
+      shiftId: String(shift.id),
+      payload: {
+        helperName: cleanedName,
+        day: shift.day_label,
+        time: shift.time_label,
+        role: shift.role,
+      },
+    }).catch((error) => console.error("Helper notification failed", error)));
 
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
