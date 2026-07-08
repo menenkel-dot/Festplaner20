@@ -459,8 +459,6 @@ const INVITATION_STATUSES: InvitationStatus[] = [
   "Keine Rückmeldung",
 ];
 
-const todayIsoDate = () => toIsoDate(new Date());
-
 const normalizeInvitationStatus = (value: unknown): InvitationStatus => {
   const normalized = String(value ?? "").trim().toLowerCase();
   const match = INVITATION_STATUSES.find((status) => status.toLowerCase() === normalized);
@@ -2065,25 +2063,6 @@ export default function Page() {
     saveToStorage("vfp_invitation_contacts", updated);
     handleCancelInvitationForm();
     showToast(editingInvitationId ? "Einladungskontakt aktualisiert." : "Einladungskontakt gespeichert.", "success");
-  };
-
-  const updateInvitationContact = (id: string, patch: Partial<InvitationContact>) => {
-    const updated = invitations.map((contact) => {
-      if (contact.id !== id) return contact;
-      return normalizeInvitationContact({ ...contact, ...patch });
-    });
-    setInvitations(updated);
-    saveToStorage("vfp_invitation_contacts", updated);
-  };
-
-  const handleInvitationQuickStatus = (contact: InvitationContact, status: InvitationStatus) => {
-    const patch: Partial<InvitationContact> = { status };
-    if (status === "Versendet" && !contact.sentAt) patch.sentAt = todayIsoDate();
-    if ((status === "Zusage" || status === "Absage" || status === "Vielleicht" || status === "Keine Rückmeldung") && !contact.respondedAt) {
-      patch.respondedAt = todayIsoDate();
-    }
-    updateInvitationContact(contact.id, patch);
-    showToast(`Einladungsstatus auf "${status}" gesetzt.`, "info");
   };
 
   const handleDeleteInvitation = (id: string) => {
@@ -4909,59 +4888,23 @@ export default function Page() {
                                 {normalized.responseNote ? <span className="ml-1 text-blue-600">Notiz</span> : null}
                               </td>
                               <td className="py-3 text-right">
-                                <div className="flex flex-col items-end gap-1">
-                                  <div className="inline-flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleInvitationQuickStatus(contact, "Versendet")}
-                                      className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-blue-700 hover:bg-blue-100"
-                                      title="Als versendet markieren"
-                                    >
-                                      Versendet
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleInvitationQuickStatus(contact, "Zusage")}
-                                      className="rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-700 hover:bg-emerald-100"
-                                      title="Zusage dokumentieren"
-                                    >
-                                      Zusage
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleInvitationQuickStatus(contact, "Absage")}
-                                      className="rounded-md border border-rose-100 bg-rose-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-100"
-                                      title="Absage dokumentieren"
-                                    >
-                                      Absage
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleInvitationQuickStatus(contact, "Vielleicht")}
-                                      className="rounded-md border border-amber-100 bg-amber-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700 hover:bg-amber-100"
-                                      title="Rückfrage oder Vielleicht dokumentieren"
-                                    >
-                                      Vielleicht
-                                    </button>
-                                  </div>
-                                  <div className="inline-flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleEditInvitation(contact)}
-                                      className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-blue-600"
-                                      title="Kontakt bearbeiten"
-                                    >
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteInvitation(contact.id)}
-                                      className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-red-500"
-                                      title="Kontakt löschen"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
+                                <div className="inline-flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEditInvitation(contact)}
+                                    className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-blue-600"
+                                    title="Kontakt und Status bearbeiten"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteInvitation(contact.id)}
+                                    className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-red-500"
+                                    title="Kontakt löschen"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
                                 </div>
                               </td>
                             </tr>
