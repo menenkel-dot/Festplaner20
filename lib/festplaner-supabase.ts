@@ -55,6 +55,20 @@ interface FestivalRow {
   budget: number | string;
 }
 
+interface InvitationContactRow {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  club_name: string | null;
+  address: string | null;
+  status?: string | null;
+  sent_at?: string | null;
+  responded_at?: string | null;
+  guest_count?: number | string | null;
+  response_note?: string | null;
+}
+
 function getClubLogoUrl(path?: string | null) {
   if (!path || !process.env.NEXT_PUBLIC_SUPABASE_URL) return "";
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, "/");
@@ -122,6 +136,82 @@ function mapFinancialStatusToUi(status: string) {
   return "Offen";
 }
 
+function isInvitationSchemaError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  const code = String(candidate.code ?? "");
+  const message = String(candidate.message ?? "").toLowerCase();
+  return (
+    code === "42P01" ||
+    code === "42703" ||
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    message.includes("invitation_contacts") ||
+    message.includes("status") && message.includes("column")
+  );
+}
+
+async function deleteInvitationContactsIfAvailable(supabase: SupabaseClient, festivalId: string) {
+  const { error } = await supabase.from("invitation_contacts").delete().eq("festival_id", festivalId);
+  if (!error) return true;
+  if (isInvitationSchemaError(error)) return false;
+  throw error;
+}
+
+async function insertInvitationContactsIfAvailable(
+  supabase: SupabaseClient,
+  festivalId: string,
+  invitations: InvitationContact[],
+) {
+  if (invitations.length === 0) return;
+
+  const baseRows = invitations.map((item) => ({
+    festival_id: festivalId,
+    email: item.email,
+    first_name: item.firstName,
+    last_name: item.lastName,
+    club_name: item.clubName,
+    address: item.address,
+  }));
+
+  const fullRows = invitations.map((item, index) => ({
+    ...baseRows[index],
+    status: item.status || "Nicht versendet",
+    sent_at: item.sentAt || null,
+    responded_at: item.respondedAt || null,
+    guest_count: item.guestCount || null,
+    response_note: item.responseNote || null,
+  }));
+
+  const fullInsert = await supabase.from("invitation_contacts").insert(fullRows);
+  if (!fullInsert.error) return;
+  if (!isInvitationSchemaError(fullInsert.error)) throw fullInsert.error;
+
+  const baseInsert = await supabase.from("invitation_contacts").insert(baseRows);
+  if (baseInsert.error && !isInvitationSchemaError(baseInsert.error)) throw baseInsert.error;
+}
+
+async function loadInvitationContactsFromSupabase(supabase: SupabaseClient, festivalId: string): Promise<InvitationContactRow[]> {
+  const fullResult = await supabase
+    .from("invitation_contacts")
+    .select("id,email,first_name,last_name,club_name,address,status,sent_at,responded_at,guest_count,response_note")
+    .eq("festival_id", festivalId)
+    .order("created_at", { ascending: true });
+
+  if (!fullResult.error) return fullResult.data ?? [];
+  if (!isInvitationSchemaError(fullResult.error)) throw fullResult.error;
+
+  const baseResult = await supabase
+    .from("invitation_contacts")
+    .select("id,email,first_name,last_name,club_name,address")
+    .eq("festival_id", festivalId)
+    .order("created_at", { ascending: true });
+
+  if (!baseResult.error) return baseResult.data ?? [];
+  if (isInvitationSchemaError(baseResult.error)) return [];
+  throw baseResult.error;
+}
+
 async function replaceFestivalChildren(
   supabase: SupabaseClient,
   festivalId: string,
@@ -145,7 +235,6 @@ async function replaceFestivalChildren(
     "program_items",
     "checklist_items",
     "protocols",
-    "invitation_contacts",
     "shifts",
     "reservations",
     "financial_items",
@@ -155,6 +244,8 @@ async function replaceFestivalChildren(
     const { error } = await supabase.from(table).delete().eq("festival_id", festivalId);
     if (error) throw error;
   }
+
+  const invitationContactsAvailable = await deleteInvitationContactsIfAvailable(supabase, festivalId);
 
   const days = snapshot.festInfo.daysConfig.map((day, index) => ({
     festival_id: festivalId,
@@ -216,23 +307,8 @@ async function replaceFestivalChildren(
     if (error) throw error;
   }
 
-  if (snapshot.invitations.length > 0) {
-    const { error } = await supabase.from("invitation_contacts").insert(
-      snapshot.invitations.map((item) => ({
-        festival_id: festivalId,
-        email: item.email,
-        first_name: item.firstName,
-        last_name: item.lastName,
-        club_name: item.clubName,
-        address: item.address,
-        status: item.status || "Nicht versendet",
-        sent_at: item.sentAt || null,
-        responded_at: item.respondedAt || null,
-        guest_count: item.guestCount || null,
-        response_note: item.responseNote || null,
-      })),
-    );
-    if (error) throw error;
+  if (invitationContactsAvailable) {
+    await insertInvitationContactsIfAvailable(supabase, festivalId, snapshot.invitations);
   }
 
   const shiftIdMap = new Map<string, string>();
@@ -514,11 +590,7 @@ export async function loadClubFestivalFromSupabase(
       .select("id,title,protocol_date,attendees,topics,decisions,attachment_name,attachment_data")
       .eq("festival_id", festival.id)
       .order("protocol_date", { ascending: true }),
-    supabase
-      .from("invitation_contacts")
-      .select("id,email,first_name,last_name,club_name,address,status,sent_at,responded_at,guest_count,response_note")
-      .eq("festival_id", festival.id)
-      .order("created_at", { ascending: true }),
+    loadInvitationContactsFromSupabase(supabase, festival.id),
     supabase
       .from("shifts")
       .select("id,day_label,time_label,role,needed,notes,shift_helpers(helper_name)")
@@ -541,7 +613,6 @@ export async function loadClubFestivalFromSupabase(
     programResult,
     checklistResult,
     protocolsResult,
-    invitationsResult,
     shiftsResult,
     reservationsResult,
     financesResult,
@@ -594,7 +665,7 @@ export async function loadClubFestivalFromSupabase(
       attachmentName: item.attachment_name ? String(item.attachment_name) : undefined,
       attachmentData: item.attachment_data ? String(item.attachment_data) : undefined,
     })),
-    invitations: (invitationsResult.data ?? []).map((item) => ({
+    invitations: (invitationsResult ?? []).map((item) => ({
       id: String(item.id),
       email: String(item.email),
       firstName: String(item.first_name ?? ""),
