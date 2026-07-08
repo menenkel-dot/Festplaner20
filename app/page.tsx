@@ -2415,6 +2415,77 @@ export default function Page() {
     showToast(`Finanzposition auf "${status}" gesetzt.`, "info");
   };
 
+  const getFinanceExportFileName = (extension: "xlsx" | "csv") => {
+    const safeName = (festInfo.name || "Fest").replace(/[\\/:*?"<>|]+/g, "_").trim() || "Fest";
+    const exportDate = new Date().toISOString().slice(0, 10);
+    return `Finanzen_${safeName}_${exportDate}.${extension}`;
+  };
+
+  const exportFinancesToXlsx = async () => {
+    const rows: SheetData = [
+      [
+        { value: "Finanzexport", fontWeight: "bold" },
+        { value: festInfo.name || "Fest", fontWeight: "bold" },
+      ],
+      [{ value: "Erwartete Einnahmen" }, { value: totalRevenues, format: "#,##0.00" }],
+      [{ value: "Erwartete Ausgaben" }, { value: totalExpenses, format: "#,##0.00" }],
+      [{ value: "Vorläufiger Gewinn" }, { value: netBalance, format: "#,##0.00" }],
+      [],
+      [
+        { value: "Typ", fontWeight: "bold" },
+        { value: "Kategorie", fontWeight: "bold" },
+        { value: "Beschreibung", fontWeight: "bold" },
+        { value: "Betrag EUR", fontWeight: "bold" },
+        { value: "Status", fontWeight: "bold" },
+        { value: "Beleg", fontWeight: "bold" },
+      ],
+      ...finances.map((item) => [
+        { value: item.type === "expense" ? "Ausgabe" : "Einnahme" },
+        { value: item.category },
+        { value: item.description },
+        { value: item.type === "expense" ? -item.amount : item.amount, format: "#,##0.00" },
+        { value: item.status },
+        { value: item.attachmentName ?? "" },
+      ]),
+    ];
+
+    await writeXlsxFile(rows, {
+      sheet: "Finanzen",
+    }).toFile(getFinanceExportFileName("xlsx"));
+    showToast("Finanzexport als Excel-Datei erstellt.", "success");
+  };
+
+  const exportFinancesToCsv = () => {
+    const escapeCsvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const csvRows = [
+      ["Finanzexport", festInfo.name || "Fest"],
+      ["Erwartete Einnahmen", totalRevenues.toFixed(2)],
+      ["Erwartete Ausgaben", totalExpenses.toFixed(2)],
+      ["Vorläufiger Gewinn", netBalance.toFixed(2)],
+      [],
+      ["Typ", "Kategorie", "Beschreibung", "Betrag EUR", "Status", "Beleg"],
+      ...finances.map((item) => [
+        item.type === "expense" ? "Ausgabe" : "Einnahme",
+        item.category,
+        item.description,
+        (item.type === "expense" ? -item.amount : item.amount).toFixed(2),
+        item.status,
+        item.attachmentName ?? "",
+      ]),
+    ];
+    const csvContent = csvRows.map((row) => row.map(escapeCsvCell).join(";")).join("\r\n");
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = getFinanceExportFileName("csv");
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast("Finanzexport als CSV-Datei erstellt.", "success");
+  };
+
   // Drag and drop attachment helper actions
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -6764,7 +6835,30 @@ export default function Page() {
                   
                   {/* Ledger entries list */}
                   <div className="lg:col-span-8 bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-200">Positionen</h3>
+                    <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Positionen</h3>
+                        <p className="mt-1 text-[11px] text-slate-500">Exportiert Kennzahlen und alle Einnahmen sowie Ausgaben dieses Vereinsfestes.</p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
+                        <button
+                          type="button"
+                          onClick={exportFinancesToXlsx}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-slate-800"
+                        >
+                          <FileDown className="h-3.5 w-3.5" />
+                          Excel exportieren
+                        </button>
+                        <button
+                          type="button"
+                          onClick={exportFinancesToCsv}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-700 transition-colors hover:bg-slate-50"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          CSV exportieren
+                        </button>
+                      </div>
+                    </div>
 
                     <div className="space-y-2.5 max-h-[450px] overflow-y-auto pr-1">
                       {finances.map((f) => (
