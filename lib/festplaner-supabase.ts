@@ -3,6 +3,7 @@ import type {
   ChecklistItem,
   FestInfo,
   FinancialItem,
+  InvitationContact,
   ProgramItem,
   Protocol,
   Reservation,
@@ -14,6 +15,7 @@ export interface FestPlanerSnapshot {
   program: ProgramItem[];
   checklist: ChecklistItem[];
   protocols: Protocol[];
+  invitations: InvitationContact[];
   shifts: Shift[];
   reservations: Reservation[];
   finances: FinancialItem[];
@@ -143,6 +145,7 @@ async function replaceFestivalChildren(
     "program_items",
     "checklist_items",
     "protocols",
+    "invitation_contacts",
     "shifts",
     "reservations",
     "financial_items",
@@ -208,6 +211,20 @@ async function replaceFestivalChildren(
         decisions: item.decisions,
         attachment_name: item.attachmentName || null,
         attachment_data: item.attachmentData || null,
+      })),
+    );
+    if (error) throw error;
+  }
+
+  if (snapshot.invitations.length > 0) {
+    const { error } = await supabase.from("invitation_contacts").insert(
+      snapshot.invitations.map((item) => ({
+        festival_id: festivalId,
+        email: item.email,
+        first_name: item.firstName,
+        last_name: item.lastName,
+        club_name: item.clubName,
+        address: item.address,
       })),
     );
     if (error) throw error;
@@ -467,6 +484,7 @@ export async function loadClubFestivalFromSupabase(
     programResult,
     checklistResult,
     protocolsResult,
+    invitationsResult,
     shiftsResult,
     reservationsResult,
     financesResult,
@@ -492,6 +510,11 @@ export async function loadClubFestivalFromSupabase(
       .eq("festival_id", festival.id)
       .order("protocol_date", { ascending: true }),
     supabase
+      .from("invitation_contacts")
+      .select("id,email,first_name,last_name,club_name,address")
+      .eq("festival_id", festival.id)
+      .order("created_at", { ascending: true }),
+    supabase
       .from("shifts")
       .select("id,day_label,time_label,role,needed,notes,shift_helpers(helper_name)")
       .eq("festival_id", festival.id)
@@ -513,6 +536,7 @@ export async function loadClubFestivalFromSupabase(
     programResult,
     checklistResult,
     protocolsResult,
+    invitationsResult,
     shiftsResult,
     reservationsResult,
     financesResult,
@@ -564,6 +588,14 @@ export async function loadClubFestivalFromSupabase(
       decisions: String(item.decisions),
       attachmentName: item.attachment_name ? String(item.attachment_name) : undefined,
       attachmentData: item.attachment_data ? String(item.attachment_data) : undefined,
+    })),
+    invitations: (invitationsResult.data ?? []).map((item) => ({
+      id: String(item.id),
+      email: String(item.email),
+      firstName: String(item.first_name ?? ""),
+      lastName: String(item.last_name ?? ""),
+      clubName: String(item.club_name ?? ""),
+      address: String(item.address ?? ""),
     })),
     shifts: (shiftsResult.data ?? []).map((item) => ({
       id: String(item.id),

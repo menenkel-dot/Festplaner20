@@ -31,6 +31,15 @@ export interface Protocol {
   attachmentData?: string;
 }
 
+export interface InvitationContact {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  clubName: string;
+  address: string;
+}
+
 export interface Shift {
   id: string;
   day: string;

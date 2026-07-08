@@ -3,12 +3,15 @@
 import * as React from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "motion/react";
+import { readSheet } from "read-excel-file/browser";
+import writeXlsxFile from "write-excel-file/browser";
+import type { SheetData } from "write-excel-file/browser";
 import { 
   Calendar, Clock, MapPin, Users, Plus, Trash2, CheckSquare, 
   Square, FileText, ClipboardList, Euro, Check, X, Share2, 
   ExternalLink, Menu, TrendingDown, TrendingUp, HelpCircle,
   Copy, Armchair, Table2, ChevronRight, AlertCircle, Sparkles, Paperclip, FileDown,
-  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send, Bell
+  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send, Bell, Upload
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import type { User } from "@supabase/supabase-js";
@@ -52,6 +55,15 @@ interface Protocol {
   decisions: string;
   attachmentName?: string;
   attachmentData?: string;
+}
+
+interface InvitationContact {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  clubName: string;
+  address: string;
 }
 
 interface Shift {
@@ -133,6 +145,7 @@ const ADMIN_PERMISSIONS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "info", label: "Fest-Programm" },
   { id: "meetings", label: "Sitzungsberichte" },
+  { id: "invitations", label: "Einladungen" },
   { id: "shifts", label: "Helfer & Schichtplan" },
   { id: "reservations", label: "Reservierungen" },
   { id: "costs", label: "Finanzen & Kosten" },
@@ -152,7 +165,7 @@ const DASHBOARD_WIDGET_PERMISSIONS = [
 const DASHBOARD_WIDGET_PERMISSION_IDS = DASHBOARD_WIDGET_PERMISSIONS.map((permission) => permission.id);
 const ADMIN_PERMISSION_IDS = ADMIN_PERMISSIONS.map((permission) => permission.id);
 const FULL_ADMIN_PERMISSION_IDS = [...ADMIN_PERMISSION_IDS, ...DASHBOARD_WIDGET_PERMISSION_IDS];
-const PLANNING_WRITE_PERMISSION_IDS = ["info", "meetings", "shifts", "reservations", "users"];
+const PLANNING_WRITE_PERMISSION_IDS = ["info", "meetings", "invitations", "shifts", "reservations", "users"];
 
 interface AppRole {
   id: string;
@@ -293,6 +306,7 @@ const LOCAL_STORAGE_DATA_KEYS = [
   "vfp_program_items",
   "vfp_checklist_items",
   "vfp_protocols",
+  "vfp_invitation_contacts",
   "vfp_shifts",
   "vfp_reservations",
   "vfp_finances",
@@ -424,6 +438,7 @@ const buildFestDaysFromRange = (startDate?: string, endDate?: string, existingDa
 const DEFAULT_PROGRAM: ProgramItem[] = [];
 const DEFAULT_CHECKLIST: ChecklistItem[] = [];
 const DEFAULT_PROTOCOLS: Protocol[] = [];
+const DEFAULT_INVITATIONS: InvitationContact[] = [];
 const DEFAULT_SHIFTS: Shift[] = [];
 const DEFAULT_RESERVATIONS: Reservation[] = [];
 const DEFAULT_FINANCES: FinancialItem[] = [];
@@ -436,6 +451,7 @@ const createEmptySnapshot = (): FestPlanerSnapshot => ({
   program: [],
   checklist: [],
   protocols: [],
+  invitations: [],
   shifts: [],
   reservations: [],
   finances: [],
@@ -444,7 +460,7 @@ const createEmptySnapshot = (): FestPlanerSnapshot => ({
 
 export default function Page() {
   // --- Global App States with Client-Side Hydration ---
-  type AdminTab = "dashboard" | "info" | "meetings" | "shifts" | "reservations" | "costs" | "users";
+  type AdminTab = "dashboard" | "info" | "meetings" | "invitations" | "shifts" | "reservations" | "costs" | "users";
   const [activeTab, setActiveTab] = React.useState<AdminTab>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [isMounted, setIsMounted] = React.useState(false);
@@ -454,6 +470,7 @@ export default function Page() {
   const [program, setProgram] = React.useState<ProgramItem[]>(DEFAULT_PROGRAM);
   const [checklist, setChecklist] = React.useState<ChecklistItem[]>(DEFAULT_CHECKLIST);
   const [protocols, setProtocols] = React.useState<Protocol[]>(DEFAULT_PROTOCOLS);
+  const [invitations, setInvitations] = React.useState<InvitationContact[]>(DEFAULT_INVITATIONS);
   const [shifts, setShifts] = React.useState<Shift[]>(DEFAULT_SHIFTS);
   const [reservations, setReservations] = React.useState<Reservation[]>(DEFAULT_RESERVATIONS);
   const [finances, setFinances] = React.useState<FinancialItem[]>(DEFAULT_FINANCES);
@@ -468,6 +485,7 @@ export default function Page() {
   const [showProgForm, setShowProgForm] = React.useState(false);
   const [showCheckForm, setShowCheckForm] = React.useState(false);
   const [showProtoForm, setShowProtoForm] = React.useState(false);
+  const [showInvitationForm, setShowInvitationForm] = React.useState(false);
   const [showShiftForm, setShowShiftForm] = React.useState(false);
   const [showResForm, setShowResForm] = React.useState(false);
   const [showFinForm, setShowFinForm] = React.useState(false);
@@ -497,6 +515,15 @@ export default function Page() {
   const [newProtoDecisions, setNewProtoDecisions] = React.useState("");
   const [newProtoAttachmentName, setNewProtoAttachmentName] = React.useState("");
   const [newProtoAttachmentData, setNewProtoAttachmentData] = React.useState("");
+
+  // Invitations Form
+  const [newInvitationEmail, setNewInvitationEmail] = React.useState("");
+  const [newInvitationFirstName, setNewInvitationFirstName] = React.useState("");
+  const [newInvitationLastName, setNewInvitationLastName] = React.useState("");
+  const [newInvitationClubName, setNewInvitationClubName] = React.useState("");
+  const [newInvitationAddress, setNewInvitationAddress] = React.useState("");
+  const [editingInvitationId, setEditingInvitationId] = React.useState<string | null>(null);
+  const [invitationSearch, setInvitationSearch] = React.useState("");
 
   // Shift Form
   const [newShiftDay, setNewShiftDay] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
@@ -643,6 +670,7 @@ export default function Page() {
       const storedProg = localStorage.getItem("vfp_program_items");
       const storedCheck = localStorage.getItem("vfp_checklist_items");
       const storedProtocols = localStorage.getItem("vfp_protocols");
+      const storedInvitations = localStorage.getItem("vfp_invitation_contacts");
       const storedShifts = localStorage.getItem("vfp_shifts");
       const storedReservations = localStorage.getItem("vfp_reservations");
       const storedFinances = localStorage.getItem("vfp_finances");
@@ -675,6 +703,7 @@ export default function Page() {
       if (storedProg) setProgram(normalizeStoredData(JSON.parse(storedProg)));
       if (storedCheck) setChecklist(normalizeStoredData(JSON.parse(storedCheck)));
       if (storedProtocols) setProtocols(normalizeStoredData(JSON.parse(storedProtocols)));
+      if (storedInvitations) setInvitations(normalizeStoredData(JSON.parse(storedInvitations)));
       if (storedShifts) setShifts(normalizeStoredData(JSON.parse(storedShifts)));
       if (storedReservations) setReservations(normalizeStoredData(JSON.parse(storedReservations)));
       if (storedFinances) setFinances(normalizeStoredData(JSON.parse(storedFinances)));
@@ -752,11 +781,12 @@ export default function Page() {
     program,
     checklist,
     protocols,
+    invitations,
     shifts,
     reservations,
     finances,
     budget,
-  }), [budget, checklist, festInfo, finances, program, protocols, reservations, shifts]);
+  }), [budget, checklist, festInfo, finances, invitations, program, protocols, reservations, shifts]);
 
   React.useEffect(() => {
     currentSnapshotRef.current = getCurrentSnapshot();
@@ -791,6 +821,7 @@ export default function Page() {
     setProgram(snapshot.program);
     setChecklist(snapshot.checklist);
     setProtocols(snapshot.protocols);
+    setInvitations(snapshot.invitations ?? []);
     setShifts(snapshot.shifts);
     setReservations(snapshot.reservations);
     setFinances(snapshot.finances);
@@ -800,6 +831,7 @@ export default function Page() {
     saveToStorage("vfp_program_items", snapshot.program);
     saveToStorage("vfp_checklist_items", snapshot.checklist);
     saveToStorage("vfp_protocols", snapshot.protocols);
+    saveToStorage("vfp_invitation_contacts", snapshot.invitations ?? []);
     saveToStorage("vfp_shifts", snapshot.shifts);
     saveToStorage("vfp_reservations", snapshot.reservations);
     saveToStorage("vfp_finances", snapshot.finances);
@@ -1850,6 +1882,208 @@ export default function Page() {
     reader.readAsDataURL(file);
   };
 
+  // Invitations
+  const normalizeInvitationEmail = (value: string) => value.trim().toLowerCase();
+  const isValidInvitationEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+  const resetInvitationForm = () => {
+    setEditingInvitationId(null);
+    setNewInvitationEmail("");
+    setNewInvitationFirstName("");
+    setNewInvitationLastName("");
+    setNewInvitationClubName("");
+    setNewInvitationAddress("");
+  };
+
+  const handleEditInvitation = (contact: InvitationContact) => {
+    setEditingInvitationId(contact.id);
+    setNewInvitationEmail(contact.email);
+    setNewInvitationFirstName(contact.firstName);
+    setNewInvitationLastName(contact.lastName);
+    setNewInvitationClubName(contact.clubName);
+    setNewInvitationAddress(contact.address);
+    setShowInvitationForm(true);
+  };
+
+  const handleCancelInvitationForm = () => {
+    resetInvitationForm();
+    setShowInvitationForm(false);
+  };
+
+  const upsertInvitationContacts = (contactsToImport: InvitationContact[]) => {
+    let added = 0;
+    let updatedCount = 0;
+    const next = [...invitations];
+    const indexByEmail = new Map(next.map((contact, index) => [normalizeInvitationEmail(contact.email), index]));
+
+    contactsToImport.forEach((contact) => {
+      const emailKey = normalizeInvitationEmail(contact.email);
+      if (!emailKey) return;
+      const existingIndex = indexByEmail.get(emailKey);
+      if (existingIndex === undefined) {
+        indexByEmail.set(emailKey, next.length);
+        next.push(contact);
+        added += 1;
+        return;
+      }
+
+      next[existingIndex] = {
+        ...next[existingIndex],
+        email: contact.email,
+        firstName: contact.firstName || next[existingIndex].firstName,
+        lastName: contact.lastName || next[existingIndex].lastName,
+        clubName: contact.clubName || next[existingIndex].clubName,
+        address: contact.address || next[existingIndex].address,
+      };
+      updatedCount += 1;
+    });
+
+    setInvitations(next);
+    saveToStorage("vfp_invitation_contacts", next);
+    return { added, updated: updatedCount };
+  };
+
+  const handleSaveInvitation = (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = newInvitationEmail.trim();
+    if (!isValidInvitationEmail(email)) {
+      showToast("Bitte eine gültige E-Mail-Adresse eingeben.", "error");
+      return;
+    }
+
+    const contact: InvitationContact = {
+      id: editingInvitationId ?? `i_${Date.now().toString()}`,
+      email,
+      firstName: newInvitationFirstName.trim(),
+      lastName: newInvitationLastName.trim(),
+      clubName: newInvitationClubName.trim(),
+      address: newInvitationAddress.trim(),
+    };
+
+    const emailKey = normalizeInvitationEmail(email);
+    const duplicate = invitations.find((item) => normalizeInvitationEmail(item.email) === emailKey && item.id !== editingInvitationId);
+    if (duplicate && editingInvitationId) {
+      showToast("Diese E-Mail-Adresse ist bereits in der Einladungsliste vorhanden.", "error");
+      return;
+    }
+
+    let updated: InvitationContact[];
+    if (editingInvitationId) {
+      updated = invitations.map((item) => (item.id === editingInvitationId ? contact : item));
+    } else if (duplicate) {
+      updated = invitations.map((item) => (item.id === duplicate.id ? { ...item, ...contact, id: item.id } : item));
+    } else {
+      updated = [...invitations, contact];
+    }
+
+    setInvitations(updated);
+    saveToStorage("vfp_invitation_contacts", updated);
+    handleCancelInvitationForm();
+    showToast(editingInvitationId ? "Einladungskontakt aktualisiert." : "Einladungskontakt gespeichert.", "success");
+  };
+
+  const handleDeleteInvitation = (id: string) => {
+    const updated = invitations.filter((contact) => contact.id !== id);
+    setInvitations(updated);
+    saveToStorage("vfp_invitation_contacts", updated);
+    if (editingInvitationId === id) handleCancelInvitationForm();
+    showToast("Einladungskontakt gelöscht.", "info");
+  };
+
+  const getInvitationCell = (row: Record<string, unknown>, aliases: string[]) => {
+    const normalizedAliases = aliases.map((alias) => alias.toLowerCase().replace(/[^a-z0-9äöüß]/gi, ""));
+    const match = Object.entries(row).find(([key]) => {
+      const normalizedKey = key.toLowerCase().replace(/[^a-z0-9äöüß]/gi, "");
+      return normalizedAliases.includes(normalizedKey);
+    });
+    return match?.[1] == null ? "" : String(match[1]).trim();
+  };
+
+  const getExcelCellText = (value: unknown) => {
+    if (value == null) return "";
+    if (value instanceof Date) return value.toLocaleDateString("de-DE");
+    return String(value).trim();
+  };
+
+  const handleImportInvitations = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    try {
+      const sheetRows = await readSheet(file);
+      const headerRow = sheetRows[0] ?? [];
+      if (headerRow.length === 0) {
+        showToast("Die Excel-Datei enthält kein Tabellenblatt.", "error");
+        return;
+      }
+
+      const headers = headerRow.map(getExcelCellText);
+
+      const rows = sheetRows.slice(1).map((row) => {
+        const record: Record<string, unknown> = {};
+        headers.forEach((header, index) => {
+          if (!header) return;
+          record[header] = getExcelCellText(row[index]);
+        });
+        return record;
+      });
+
+      let skipped = 0;
+      const imported = rows.flatMap((row, index) => {
+        const email = getInvitationCell(row, ["E-Mail", "Email", "Email Adresse", "E-Mail Adresse", "Mail"]);
+        if (!isValidInvitationEmail(email)) {
+          skipped += 1;
+          return [];
+        }
+
+        return [{
+          id: `i_${Date.now().toString()}_${index}`,
+          email: email.trim(),
+          firstName: getInvitationCell(row, ["Vorname", "First Name", "Firstname"]),
+          lastName: getInvitationCell(row, ["Name", "Nachname", "Last Name", "Lastname"]),
+          clubName: getInvitationCell(row, ["Verein", "Vereinsname", "Club", "Club Name"]),
+          address: getInvitationCell(row, ["Anschrift", "Adresse", "Address"]),
+        }];
+      });
+
+      if (imported.length === 0) {
+        showToast("Keine gültigen Einladungskontakte in der Excel-Datei gefunden.", "error");
+        return;
+      }
+
+      const result = upsertInvitationContacts(imported);
+      const skippedText = skipped > 0 ? `, ${skipped} Zeilen übersprungen` : "";
+      showToast(`${result.added} neu, ${result.updated} aktualisiert${skippedText}.`, "success");
+    } catch (error) {
+      console.error("Invitation import failed", error);
+      showToast("Excel-Import fehlgeschlagen.", "error");
+    }
+  };
+
+  const exportInvitationsToXlsx = async () => {
+    const safeName = (festInfo.name || "Fest").replace(/[\\/:*?"<>|]+/g, "_");
+    const rows: SheetData = [
+      [
+        { value: "E-Mail", fontWeight: "bold" },
+        { value: "Vorname", fontWeight: "bold" },
+        { value: "Name", fontWeight: "bold" },
+        { value: "Verein", fontWeight: "bold" },
+        { value: "Anschrift", fontWeight: "bold" },
+      ],
+      ...invitations.map((contact) => [
+        { value: contact.email },
+        { value: contact.firstName },
+        { value: contact.lastName },
+        { value: contact.clubName },
+        { value: contact.address },
+      ]),
+    ];
+    await writeXlsxFile(rows, {
+      sheet: "Einladungen",
+    }).toFile(`Einladungen_${safeName}.xlsx`);
+  };
+
   // Shifts (Schichten)
   const resetShiftForm = () => {
     setEditingShiftId(null);
@@ -2497,6 +2731,17 @@ export default function Page() {
   const checklistProgress = checklist.length > 0 
     ? Math.round((checklist.filter(c => c.completed).length / checklist.length) * 100) 
     : 0;
+  const filteredInvitations = React.useMemo(() => {
+    const query = invitationSearch.trim().toLowerCase();
+    if (!query) return invitations;
+    return invitations.filter((contact) => [
+      contact.email,
+      contact.firstName,
+      contact.lastName,
+      contact.clubName,
+      contact.address,
+    ].some((value) => value.toLowerCase().includes(query)));
+  }, [invitationSearch, invitations]);
   const reservationEnabledDays = (festInfo.daysConfig || []).filter((day) => day.reservationsEnabled);
   const reservationEnabledDayNames = new Set(reservationEnabledDays.map((day) => day.name));
   const totalTables = reservationEnabledDays.reduce((sum, day) => sum + day.tableCount, 0);
@@ -3603,6 +3848,21 @@ export default function Page() {
           </button>
 
           <button
+            onClick={() => openTab("invitations")}
+            className={`${!hasPermission("invitations") ? "hidden" : "flex"} items-center justify-between px-3.5 py-2.5 rounded-lg font-semibold text-xs text-left transition-all ${
+              activeTab === "invitations" 
+                ? "bg-blue-50 text-blue-700 font-bold" 
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <span className="flex items-center space-x-3">
+              <Mail className="w-4 h-4 shrink-0" />
+              <span>Einladungen</span>
+            </span>
+            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+          </button>
+
+          <button
             onClick={() => openTab("shifts")}
             className={`${!hasPermission("shifts") ? "hidden" : "flex"} items-center justify-between px-3.5 py-2.5 rounded-lg font-semibold text-xs text-left transition-all ${
               activeTab === "shifts" 
@@ -4426,6 +4686,196 @@ export default function Page() {
 
                 </div>
 
+              </motion.div>
+            )}
+
+            {/* TABS 3: EINLADUNGEN */}
+            {activeTab === "invitations" && (
+              <motion.div
+                key="invitations-tab"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="grid grid-cols-1 lg:grid-cols-12 gap-6"
+              >
+                <div className="lg:col-span-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                  <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                      <Mail className="h-4.5 w-4.5 text-blue-600" />
+                      <span>Einladungsliste ({invitations.length})</span>
+                    </h3>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50">
+                        <Upload className="h-3.5 w-3.5" />
+                        <span>Excel Import</span>
+                        <input
+                          type="file"
+                          accept=".xlsx"
+                          onChange={handleImportInvitations}
+                          className="hidden"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={exportInvitationsToXlsx}
+                        disabled={invitations.length === 0}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400"
+                      >
+                        <FileDown className="h-3.5 w-3.5" />
+                        <span>Excel Export</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <input
+                    type="search"
+                    value={invitationSearch}
+                    onChange={(e) => setInvitationSearch(e.target.value)}
+                    placeholder="Suchen nach Name, E-Mail, Verein oder Anschrift"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                  />
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[760px] text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          <th className="py-2 pr-3">E-Mail</th>
+                          <th className="py-2 pr-3">Vorname</th>
+                          <th className="py-2 pr-3">Name</th>
+                          <th className="py-2 pr-3">Verein</th>
+                          <th className="py-2 pr-3">Anschrift</th>
+                          <th className="py-2 text-right">Aktion</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredInvitations.map((contact) => (
+                          <tr key={contact.id} className="group align-top hover:bg-slate-50/70">
+                            <td className="max-w-[180px] truncate py-3 pr-3 font-semibold text-slate-800">{contact.email}</td>
+                            <td className="py-3 pr-3 text-slate-600">{contact.firstName || "-"}</td>
+                            <td className="py-3 pr-3 text-slate-600">{contact.lastName || "-"}</td>
+                            <td className="max-w-[170px] truncate py-3 pr-3 text-slate-600">{contact.clubName || "-"}</td>
+                            <td className="max-w-[220px] truncate py-3 pr-3 text-slate-600">{contact.address || "-"}</td>
+                            <td className="py-3 text-right">
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditInvitation(contact)}
+                                  className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-blue-600"
+                                  title="Kontakt bearbeiten"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteInvitation(contact.id)}
+                                  className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-red-500"
+                                  title="Kontakt löschen"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {filteredInvitations.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-xs font-semibold text-slate-500">
+                      {invitations.length === 0 ? "Noch keine Einladungskontakte vorhanden." : "Keine Kontakte zur Suche gefunden."}
+                    </div>
+                  )}
+                </div>
+
+                <div className="lg:col-span-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  {!showInvitationForm ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowInvitationForm(true)}
+                      className="flex min-h-[160px] w-full flex-col items-center justify-center space-y-2 rounded-xl border-2 border-dashed border-slate-200 text-slate-500 transition-all hover:border-slate-400 hover:bg-slate-50/50 hover:text-slate-700"
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+                        <Plus className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <span className="text-xs font-bold uppercase tracking-wider">Kontakt hinzufügen</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                          {editingInvitationId ? "Kontakt bearbeiten" : "Kontakt hinzufügen"}
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={handleCancelInvitationForm}
+                          className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleSaveInvitation} className="space-y-3">
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">E-Mail *</span>
+                          <input
+                            type="email"
+                            value={newInvitationEmail}
+                            onChange={(e) => setNewInvitationEmail(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            placeholder="kontakt@verein.at"
+                          />
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Vorname</span>
+                            <input
+                              type="text"
+                              value={newInvitationFirstName}
+                              onChange={(e) => setNewInvitationFirstName(e.target.value)}
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Name</span>
+                            <input
+                              type="text"
+                              value={newInvitationLastName}
+                              onChange={(e) => setNewInvitationLastName(e.target.value)}
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            />
+                          </label>
+                        </div>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Verein</span>
+                          <input
+                            type="text"
+                            value={newInvitationClubName}
+                            onChange={(e) => setNewInvitationClubName(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            placeholder="Vereinsname"
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Anschrift</span>
+                          <textarea
+                            value={newInvitationAddress}
+                            onChange={(e) => setNewInvitationAddress(e.target.value)}
+                            rows={3}
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            placeholder="Straße, PLZ Ort"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold uppercase text-white transition-colors hover:bg-slate-800"
+                        >
+                          {editingInvitationId ? "Kontakt speichern" : "Kontakt anlegen"}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             )}
 
