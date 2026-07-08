@@ -1,6 +1,7 @@
 export type ReservationStatus = "Ausstehend" | "Bestätigt" | "Storniert";
 export type FinancialType = "expense" | "revenue";
 export type FinancialStatus = "Bezahlt" | "Offen" | "Erhalten";
+export type InvitationStatus = "Nicht versendet" | "Versendet" | "Zusage" | "Absage" | "Vielleicht" | "Keine Rückmeldung";
 
 export interface ProgramItem {
   id: string;
@@ -38,6 +39,11 @@ export interface InvitationContact {
   lastName: string;
   clubName: string;
   address: string;
+  status?: InvitationStatus;
+  sentAt?: string;
+  respondedAt?: string;
+  guestCount?: number;
+  responseNote?: string;
 }
 
 export interface Shift {

@@ -225,6 +225,11 @@ async function replaceFestivalChildren(
         last_name: item.lastName,
         club_name: item.clubName,
         address: item.address,
+        status: item.status || "Nicht versendet",
+        sent_at: item.sentAt || null,
+        responded_at: item.respondedAt || null,
+        guest_count: item.guestCount || null,
+        response_note: item.responseNote || null,
       })),
     );
     if (error) throw error;
@@ -511,7 +516,7 @@ export async function loadClubFestivalFromSupabase(
       .order("protocol_date", { ascending: true }),
     supabase
       .from("invitation_contacts")
-      .select("id,email,first_name,last_name,club_name,address")
+      .select("id,email,first_name,last_name,club_name,address,status,sent_at,responded_at,guest_count,response_note")
       .eq("festival_id", festival.id)
       .order("created_at", { ascending: true }),
     supabase
@@ -596,6 +601,11 @@ export async function loadClubFestivalFromSupabase(
       lastName: String(item.last_name ?? ""),
       clubName: String(item.club_name ?? ""),
       address: String(item.address ?? ""),
+      status: String(item.status ?? "Nicht versendet") as InvitationContact["status"],
+      sentAt: item.sent_at ? String(item.sent_at) : undefined,
+      respondedAt: item.responded_at ? String(item.responded_at) : undefined,
+      guestCount: item.guest_count ? Number(item.guest_count) : undefined,
+      responseNote: item.response_note ? String(item.response_note) : undefined,
     })),
     shifts: (shiftsResult.data ?? []).map((item) => ({
       id: String(item.id),

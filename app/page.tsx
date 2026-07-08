@@ -64,7 +64,14 @@ interface InvitationContact {
   lastName: string;
   clubName: string;
   address: string;
+  status?: InvitationStatus;
+  sentAt?: string;
+  respondedAt?: string;
+  guestCount?: number;
+  responseNote?: string;
 }
+
+type InvitationStatus = "Nicht versendet" | "Versendet" | "Zusage" | "Absage" | "Vielleicht" | "Keine Rückmeldung";
 
 interface Shift {
   id: string;
@@ -442,6 +449,55 @@ const DEFAULT_INVITATIONS: InvitationContact[] = [];
 const DEFAULT_SHIFTS: Shift[] = [];
 const DEFAULT_RESERVATIONS: Reservation[] = [];
 const DEFAULT_FINANCES: FinancialItem[] = [];
+const DEFAULT_INVITATION_STATUS: InvitationStatus = "Nicht versendet";
+const INVITATION_STATUSES: InvitationStatus[] = [
+  "Nicht versendet",
+  "Versendet",
+  "Zusage",
+  "Absage",
+  "Vielleicht",
+  "Keine Rückmeldung",
+];
+
+const todayIsoDate = () => toIsoDate(new Date());
+
+const normalizeInvitationStatus = (value: unknown): InvitationStatus => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  const match = INVITATION_STATUSES.find((status) => status.toLowerCase() === normalized);
+  return match ?? DEFAULT_INVITATION_STATUS;
+};
+
+const normalizeInvitationContact = (contact: InvitationContact): InvitationContact => ({
+  ...contact,
+  status: normalizeInvitationStatus(contact.status),
+  sentAt: contact.sentAt || undefined,
+  respondedAt: contact.respondedAt || undefined,
+  guestCount: contact.guestCount && Number(contact.guestCount) > 0 ? Number(contact.guestCount) : undefined,
+  responseNote: contact.responseNote || undefined,
+});
+
+const formatOptionalDate = (value?: string) => {
+  if (!value) return "";
+  const date = parseLocalDate(value);
+  return date ? new Intl.DateTimeFormat("de-DE").format(date) : value;
+};
+
+const getInvitationStatusClasses = (status?: InvitationStatus) => {
+  switch (normalizeInvitationStatus(status)) {
+    case "Versendet":
+      return "border-blue-100 bg-blue-50 text-blue-700";
+    case "Zusage":
+      return "border-emerald-100 bg-emerald-50 text-emerald-700";
+    case "Absage":
+      return "border-rose-100 bg-rose-50 text-rose-700";
+    case "Vielleicht":
+      return "border-amber-100 bg-amber-50 text-amber-700";
+    case "Keine Rückmeldung":
+      return "border-slate-200 bg-slate-100 text-slate-600";
+    default:
+      return "border-slate-200 bg-white text-slate-500";
+  }
+};
 
 const createEmptySnapshot = (): FestPlanerSnapshot => ({
   festInfo: {
@@ -522,6 +578,11 @@ export default function Page() {
   const [newInvitationLastName, setNewInvitationLastName] = React.useState("");
   const [newInvitationClubName, setNewInvitationClubName] = React.useState("");
   const [newInvitationAddress, setNewInvitationAddress] = React.useState("");
+  const [newInvitationStatus, setNewInvitationStatus] = React.useState<InvitationStatus>(DEFAULT_INVITATION_STATUS);
+  const [newInvitationSentAt, setNewInvitationSentAt] = React.useState("");
+  const [newInvitationRespondedAt, setNewInvitationRespondedAt] = React.useState("");
+  const [newInvitationGuestCount, setNewInvitationGuestCount] = React.useState("");
+  const [newInvitationResponseNote, setNewInvitationResponseNote] = React.useState("");
   const [editingInvitationId, setEditingInvitationId] = React.useState<string | null>(null);
   const [invitationSearch, setInvitationSearch] = React.useState("");
 
@@ -703,7 +764,9 @@ export default function Page() {
       if (storedProg) setProgram(normalizeStoredData(JSON.parse(storedProg)));
       if (storedCheck) setChecklist(normalizeStoredData(JSON.parse(storedCheck)));
       if (storedProtocols) setProtocols(normalizeStoredData(JSON.parse(storedProtocols)));
-      if (storedInvitations) setInvitations(normalizeStoredData(JSON.parse(storedInvitations)));
+      if (storedInvitations) {
+        setInvitations((normalizeStoredData(JSON.parse(storedInvitations)) as InvitationContact[]).map(normalizeInvitationContact));
+      }
       if (storedShifts) setShifts(normalizeStoredData(JSON.parse(storedShifts)));
       if (storedReservations) setReservations(normalizeStoredData(JSON.parse(storedReservations)));
       if (storedFinances) setFinances(normalizeStoredData(JSON.parse(storedFinances)));
@@ -821,7 +884,7 @@ export default function Page() {
     setProgram(snapshot.program);
     setChecklist(snapshot.checklist);
     setProtocols(snapshot.protocols);
-    setInvitations(snapshot.invitations ?? []);
+    setInvitations((snapshot.invitations ?? []).map(normalizeInvitationContact));
     setShifts(snapshot.shifts);
     setReservations(snapshot.reservations);
     setFinances(snapshot.finances);
@@ -831,7 +894,7 @@ export default function Page() {
     saveToStorage("vfp_program_items", snapshot.program);
     saveToStorage("vfp_checklist_items", snapshot.checklist);
     saveToStorage("vfp_protocols", snapshot.protocols);
-    saveToStorage("vfp_invitation_contacts", snapshot.invitations ?? []);
+    saveToStorage("vfp_invitation_contacts", (snapshot.invitations ?? []).map(normalizeInvitationContact));
     saveToStorage("vfp_shifts", snapshot.shifts);
     saveToStorage("vfp_reservations", snapshot.reservations);
     saveToStorage("vfp_finances", snapshot.finances);
@@ -1893,15 +1956,26 @@ export default function Page() {
     setNewInvitationLastName("");
     setNewInvitationClubName("");
     setNewInvitationAddress("");
+    setNewInvitationStatus(DEFAULT_INVITATION_STATUS);
+    setNewInvitationSentAt("");
+    setNewInvitationRespondedAt("");
+    setNewInvitationGuestCount("");
+    setNewInvitationResponseNote("");
   };
 
   const handleEditInvitation = (contact: InvitationContact) => {
+    const normalized = normalizeInvitationContact(contact);
     setEditingInvitationId(contact.id);
-    setNewInvitationEmail(contact.email);
-    setNewInvitationFirstName(contact.firstName);
-    setNewInvitationLastName(contact.lastName);
-    setNewInvitationClubName(contact.clubName);
-    setNewInvitationAddress(contact.address);
+    setNewInvitationEmail(normalized.email);
+    setNewInvitationFirstName(normalized.firstName);
+    setNewInvitationLastName(normalized.lastName);
+    setNewInvitationClubName(normalized.clubName);
+    setNewInvitationAddress(normalized.address);
+    setNewInvitationStatus(normalized.status ?? DEFAULT_INVITATION_STATUS);
+    setNewInvitationSentAt(normalized.sentAt ?? "");
+    setNewInvitationRespondedAt(normalized.respondedAt ?? "");
+    setNewInvitationGuestCount(normalized.guestCount ? String(normalized.guestCount) : "");
+    setNewInvitationResponseNote(normalized.responseNote ?? "");
     setShowInvitationForm(true);
   };
 
@@ -1917,23 +1991,29 @@ export default function Page() {
     const indexByEmail = new Map(next.map((contact, index) => [normalizeInvitationEmail(contact.email), index]));
 
     contactsToImport.forEach((contact) => {
+      const normalizedContact = normalizeInvitationContact(contact);
       const emailKey = normalizeInvitationEmail(contact.email);
       if (!emailKey) return;
       const existingIndex = indexByEmail.get(emailKey);
       if (existingIndex === undefined) {
         indexByEmail.set(emailKey, next.length);
-        next.push(contact);
+        next.push(normalizedContact);
         added += 1;
         return;
       }
 
       next[existingIndex] = {
         ...next[existingIndex],
-        email: contact.email,
-        firstName: contact.firstName || next[existingIndex].firstName,
-        lastName: contact.lastName || next[existingIndex].lastName,
-        clubName: contact.clubName || next[existingIndex].clubName,
-        address: contact.address || next[existingIndex].address,
+        email: normalizedContact.email,
+        firstName: normalizedContact.firstName || next[existingIndex].firstName,
+        lastName: normalizedContact.lastName || next[existingIndex].lastName,
+        clubName: normalizedContact.clubName || next[existingIndex].clubName,
+        address: normalizedContact.address || next[existingIndex].address,
+        status: normalizedContact.status || next[existingIndex].status,
+        sentAt: normalizedContact.sentAt || next[existingIndex].sentAt,
+        respondedAt: normalizedContact.respondedAt || next[existingIndex].respondedAt,
+        guestCount: normalizedContact.guestCount ?? next[existingIndex].guestCount,
+        responseNote: normalizedContact.responseNote || next[existingIndex].responseNote,
       };
       updatedCount += 1;
     });
@@ -1958,6 +2038,11 @@ export default function Page() {
       lastName: newInvitationLastName.trim(),
       clubName: newInvitationClubName.trim(),
       address: newInvitationAddress.trim(),
+      status: newInvitationStatus,
+      sentAt: newInvitationSentAt || undefined,
+      respondedAt: newInvitationRespondedAt || undefined,
+      guestCount: newInvitationGuestCount ? Math.max(1, Number(newInvitationGuestCount) || 1) : undefined,
+      responseNote: newInvitationResponseNote.trim() || undefined,
     };
 
     const emailKey = normalizeInvitationEmail(email);
@@ -1982,6 +2067,25 @@ export default function Page() {
     showToast(editingInvitationId ? "Einladungskontakt aktualisiert." : "Einladungskontakt gespeichert.", "success");
   };
 
+  const updateInvitationContact = (id: string, patch: Partial<InvitationContact>) => {
+    const updated = invitations.map((contact) => {
+      if (contact.id !== id) return contact;
+      return normalizeInvitationContact({ ...contact, ...patch });
+    });
+    setInvitations(updated);
+    saveToStorage("vfp_invitation_contacts", updated);
+  };
+
+  const handleInvitationQuickStatus = (contact: InvitationContact, status: InvitationStatus) => {
+    const patch: Partial<InvitationContact> = { status };
+    if (status === "Versendet" && !contact.sentAt) patch.sentAt = todayIsoDate();
+    if ((status === "Zusage" || status === "Absage" || status === "Vielleicht" || status === "Keine Rückmeldung") && !contact.respondedAt) {
+      patch.respondedAt = todayIsoDate();
+    }
+    updateInvitationContact(contact.id, patch);
+    showToast(`Einladungsstatus auf "${status}" gesetzt.`, "info");
+  };
+
   const handleDeleteInvitation = (id: string) => {
     const updated = invitations.filter((contact) => contact.id !== id);
     setInvitations(updated);
@@ -2001,8 +2105,20 @@ export default function Page() {
 
   const getExcelCellText = (value: unknown) => {
     if (value == null) return "";
-    if (value instanceof Date) return value.toLocaleDateString("de-DE");
+    if (value instanceof Date) return toIsoDate(value);
     return String(value).trim();
+  };
+
+  const normalizeInvitationDate = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const germanMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (germanMatch) {
+      const [, day, month, year] = germanMatch;
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+    return "";
   };
 
   const handleImportInvitations = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2044,6 +2160,11 @@ export default function Page() {
           lastName: getInvitationCell(row, ["Name", "Nachname", "Last Name", "Lastname"]),
           clubName: getInvitationCell(row, ["Verein", "Vereinsname", "Club", "Club Name"]),
           address: getInvitationCell(row, ["Anschrift", "Adresse", "Address"]),
+          status: normalizeInvitationStatus(getInvitationCell(row, ["Status", "Einladungsstatus", "Rückmeldung", "Rueckmeldung"])),
+          sentAt: normalizeInvitationDate(getInvitationCell(row, ["Versendet am", "Versendet", "Gesendet am", "Sent At"])) || undefined,
+          respondedAt: normalizeInvitationDate(getInvitationCell(row, ["Rückmeldung am", "Rueckmeldung am", "Antwort am", "Responded At"])) || undefined,
+          guestCount: Number(getInvitationCell(row, ["Personenzahl", "Gäste", "Gaeste", "Teilnehmer", "Guest Count"])) || undefined,
+          responseNote: getInvitationCell(row, ["Notiz", "Rückmeldung Notiz", "Rueckmeldung Notiz", "Bemerkung"]),
         }];
       });
 
@@ -2070,14 +2191,27 @@ export default function Page() {
         { value: "Name", fontWeight: "bold" },
         { value: "Verein", fontWeight: "bold" },
         { value: "Anschrift", fontWeight: "bold" },
+        { value: "Status", fontWeight: "bold" },
+        { value: "Versendet am", fontWeight: "bold" },
+        { value: "Rückmeldung am", fontWeight: "bold" },
+        { value: "Personenzahl", fontWeight: "bold" },
+        { value: "Notiz", fontWeight: "bold" },
       ],
-      ...invitations.map((contact) => [
+      ...invitations.map((contact) => {
+        const normalized = normalizeInvitationContact(contact);
+        return [
         { value: contact.email },
         { value: contact.firstName },
         { value: contact.lastName },
         { value: contact.clubName },
         { value: contact.address },
-      ]),
+          { value: normalized.status ?? DEFAULT_INVITATION_STATUS },
+          { value: normalized.sentAt ?? "" },
+          { value: normalized.respondedAt ?? "" },
+          { value: normalized.guestCount ?? "" },
+          { value: normalized.responseNote ?? "" },
+        ];
+      }),
     ];
     await writeXlsxFile(rows, {
       sheet: "Einladungen",
@@ -2740,6 +2874,8 @@ export default function Page() {
       contact.lastName,
       contact.clubName,
       contact.address,
+      normalizeInvitationStatus(contact.status),
+      contact.responseNote ?? "",
     ].some((value) => value.toLowerCase().includes(query)));
   }, [invitationSearch, invitations]);
   const reservationEnabledDays = (festInfo.daysConfig || []).filter((day) => day.reservationsEnabled);
@@ -4736,47 +4872,101 @@ export default function Page() {
                   />
 
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[760px] text-left text-xs">
+                    <table className="w-full min-w-[980px] text-left text-xs">
                       <thead>
                         <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-400">
                           <th className="py-2 pr-3">E-Mail</th>
                           <th className="py-2 pr-3">Vorname</th>
                           <th className="py-2 pr-3">Name</th>
                           <th className="py-2 pr-3">Verein</th>
+                          <th className="py-2 pr-3">Status</th>
+                          <th className="py-2 pr-3">Verlauf</th>
                           <th className="py-2 pr-3">Anschrift</th>
                           <th className="py-2 text-right">Aktion</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {filteredInvitations.map((contact) => (
-                          <tr key={contact.id} className="group align-top hover:bg-slate-50/70">
-                            <td className="max-w-[180px] truncate py-3 pr-3 font-semibold text-slate-800">{contact.email}</td>
-                            <td className="py-3 pr-3 text-slate-600">{contact.firstName || "-"}</td>
-                            <td className="py-3 pr-3 text-slate-600">{contact.lastName || "-"}</td>
-                            <td className="max-w-[170px] truncate py-3 pr-3 text-slate-600">{contact.clubName || "-"}</td>
-                            <td className="max-w-[220px] truncate py-3 pr-3 text-slate-600">{contact.address || "-"}</td>
-                            <td className="py-3 text-right">
-                              <div className="inline-flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleEditInvitation(contact)}
-                                  className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-blue-600"
-                                  title="Kontakt bearbeiten"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteInvitation(contact.id)}
-                                  className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-red-500"
-                                  title="Kontakt löschen"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                        {filteredInvitations.map((contact) => {
+                          const normalized = normalizeInvitationContact(contact);
+                          return (
+                            <tr key={contact.id} className="group align-top hover:bg-slate-50/70">
+                              <td className="max-w-[180px] truncate py-3 pr-3 font-semibold text-slate-800">{contact.email}</td>
+                              <td className="py-3 pr-3 text-slate-600">{contact.firstName || "-"}</td>
+                              <td className="py-3 pr-3 text-slate-600">{contact.lastName || "-"}</td>
+                              <td className="max-w-[150px] truncate py-3 pr-3 text-slate-600">{contact.clubName || "-"}</td>
+                              <td className="py-3 pr-3">
+                                <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${getInvitationStatusClasses(normalized.status)}`}>
+                                  {normalized.status}
+                                </span>
+                              </td>
+                              <td className="py-3 pr-3 text-[10px] font-medium leading-relaxed text-slate-500">
+                                <div>{normalized.sentAt ? `Versendet: ${formatOptionalDate(normalized.sentAt)}` : "Noch nicht versendet"}</div>
+                                <div>{normalized.respondedAt ? `Rückmeldung: ${formatOptionalDate(normalized.respondedAt)}` : "Keine Rückmeldung datiert"}</div>
+                                {normalized.guestCount ? <div>{normalized.guestCount} Personen</div> : null}
+                              </td>
+                              <td className="max-w-[180px] truncate py-3 pr-3 text-slate-600" title={contact.responseNote || contact.address}>
+                                {contact.address || "-"}
+                                {normalized.responseNote ? <span className="ml-1 text-blue-600">Notiz</span> : null}
+                              </td>
+                              <td className="py-3 text-right">
+                                <div className="flex flex-col items-end gap-1">
+                                  <div className="inline-flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleInvitationQuickStatus(contact, "Versendet")}
+                                      className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-blue-700 hover:bg-blue-100"
+                                      title="Als versendet markieren"
+                                    >
+                                      Versendet
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleInvitationQuickStatus(contact, "Zusage")}
+                                      className="rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-700 hover:bg-emerald-100"
+                                      title="Zusage dokumentieren"
+                                    >
+                                      Zusage
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleInvitationQuickStatus(contact, "Absage")}
+                                      className="rounded-md border border-rose-100 bg-rose-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-100"
+                                      title="Absage dokumentieren"
+                                    >
+                                      Absage
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleInvitationQuickStatus(contact, "Vielleicht")}
+                                      className="rounded-md border border-amber-100 bg-amber-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700 hover:bg-amber-100"
+                                      title="Rückfrage oder Vielleicht dokumentieren"
+                                    >
+                                      Vielleicht
+                                    </button>
+                                  </div>
+                                  <div className="inline-flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleEditInvitation(contact)}
+                                      className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-blue-600"
+                                      title="Kontakt bearbeiten"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteInvitation(contact.id)}
+                                      className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-red-500"
+                                      title="Kontakt löschen"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -4864,6 +5054,59 @@ export default function Page() {
                             rows={3}
                             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
                             placeholder="Straße, PLZ Ort"
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Status</span>
+                          <select
+                            value={newInvitationStatus}
+                            onChange={(e) => setNewInvitationStatus(e.target.value as InvitationStatus)}
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          >
+                            {INVITATION_STATUSES.map((status) => (
+                              <option key={status} value={status}>{status}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Versendet am</span>
+                            <input
+                              type="date"
+                              value={newInvitationSentAt}
+                              onChange={(e) => setNewInvitationSentAt(e.target.value)}
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Rückmeldung am</span>
+                            <input
+                              type="date"
+                              value={newInvitationRespondedAt}
+                              onChange={(e) => setNewInvitationRespondedAt(e.target.value)}
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            />
+                          </label>
+                        </div>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Personenzahl</span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={newInvitationGuestCount}
+                            onChange={(e) => setNewInvitationGuestCount(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            placeholder="Optional"
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Notiz zur Rückmeldung</span>
+                          <textarea
+                            value={newInvitationResponseNote}
+                            onChange={(e) => setNewInvitationResponseNote(e.target.value)}
+                            rows={3}
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            placeholder="z.B. Telefonnotiz, offene Frage, Ansprechpartner"
                           />
                         </label>
                         <button
