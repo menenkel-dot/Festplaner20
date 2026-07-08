@@ -4858,9 +4858,9 @@ export default function Page() {
                           <th className="py-2 pr-3">Vorname</th>
                           <th className="py-2 pr-3">Name</th>
                           <th className="py-2 pr-3">Verein</th>
+                          <th className="py-2 pr-3">Anschrift</th>
                           <th className="py-2 pr-3">Status</th>
                           <th className="py-2 pr-3">Verlauf</th>
-                          <th className="py-2 pr-3">Anschrift</th>
                           <th className="py-2 text-right">Aktion</th>
                         </tr>
                       </thead>
@@ -4873,6 +4873,10 @@ export default function Page() {
                               <td className="py-3 pr-3 text-slate-600">{contact.firstName || "-"}</td>
                               <td className="py-3 pr-3 text-slate-600">{contact.lastName || "-"}</td>
                               <td className="max-w-[150px] truncate py-3 pr-3 text-slate-600">{contact.clubName || "-"}</td>
+                              <td className="max-w-[180px] truncate py-3 pr-3 text-slate-600" title={contact.responseNote || contact.address}>
+                                {contact.address || "-"}
+                                {normalized.responseNote ? <span className="ml-1 text-blue-600">Notiz</span> : null}
+                              </td>
                               <td className="py-3 pr-3">
                                 <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${getInvitationStatusClasses(normalized.status)}`}>
                                   {normalized.status}
@@ -4882,10 +4886,6 @@ export default function Page() {
                                 <div>{normalized.sentAt ? `Versendet: ${formatOptionalDate(normalized.sentAt)}` : "Noch nicht versendet"}</div>
                                 <div>{normalized.respondedAt ? `Rückmeldung: ${formatOptionalDate(normalized.respondedAt)}` : "Keine Rückmeldung datiert"}</div>
                                 {normalized.guestCount ? <div>{normalized.guestCount} Personen</div> : null}
-                              </td>
-                              <td className="max-w-[180px] truncate py-3 pr-3 text-slate-600" title={contact.responseNote || contact.address}>
-                                {contact.address || "-"}
-                                {normalized.responseNote ? <span className="ml-1 text-blue-600">Notiz</span> : null}
                               </td>
                               <td className="py-3 text-right">
                                 <div className="inline-flex items-center gap-1">
