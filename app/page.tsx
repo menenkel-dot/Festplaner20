@@ -6429,157 +6429,6 @@ export default function Page() {
                     <div className="flex items-start gap-3">
                       <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-blue-600 transition-transform group-open:rotate-90" />
                       <div>
-                        <h3 className="text-lg font-bold text-slate-900">Benutzer und Rollen anlegen</h3>
-                        <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
-                          Neue Vereinsbenutzer und Rollen vorbereiten, ohne die Übersichten dauerhaft aufzuklappen.
-                        </p>
-                      </div>
-                    </div>
-                    <span className="ml-7 w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:ml-0">
-                      Formulare
-                    </span>
-                  </summary>
-                  <div className="grid grid-cols-1 gap-6 border-t border-slate-200 px-6 pb-6 pt-5 lg:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 space-y-4">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">Neue Rolle</h3>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-500">Lege fest, welche Bereiche Benutzer dieser Rolle sehen und bearbeiten dürfen.</p>
-                    </div>
-                    <form onSubmit={handleCreateRole} className="space-y-3">
-                      <label className="block space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Rollenname *</span>
-                        <input
-                          type="text"
-                          placeholder="z.B. Kassier, Schichtleitung"
-                          value={newRoleName}
-                          onChange={(e) => setNewRoleName(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                        />
-                      </label>
-                      <label className="block space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Beschreibung</span>
-                        <input
-                          type="text"
-                          placeholder="Kurze interne Beschreibung"
-                          value={newRoleDescription}
-                          onChange={(e) => setNewRoleDescription(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                        />
-                      </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {ADMIN_PERMISSIONS.map((permission) => (
-                          <label key={permission.id} className="flex items-center space-x-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                            <input
-                              type="checkbox"
-                              checked={newRolePermissions.includes(permission.id)}
-                              onChange={(e) => {
-                                toggleRolePermission(setNewRolePermissions, permission.id, e.target.checked);
-                              }}
-                            />
-                            <span>{permission.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                      {newRolePermissions.includes("dashboard") && (
-                        <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 space-y-2">
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Sichtbare Dashboard-Kacheln</p>
-                            <p className="text-[10px] text-blue-700/80 mt-0.5 leading-normal">
-                              Diese Auswahl gilt nur, wenn die Rolle Zugriff auf das Dashboard hat.
-                            </p>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {DASHBOARD_WIDGET_PERMISSIONS.map((permission) => (
-                              <label key={permission.id} className="flex items-center space-x-2 text-xs text-slate-600 bg-white border border-blue-100 rounded-lg px-3 py-2">
-                                <input
-                                  type="checkbox"
-                                  checked={newRolePermissions.includes(permission.id)}
-                                  onChange={(e) => {
-                                    toggleRolePermission(setNewRolePermissions, permission.id, e.target.checked);
-                                  }}
-                                />
-                                <span>{permission.label}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <button
-                        type="submit"
-                        disabled={userAdminLoading || !newRoleName.trim() || newRolePermissions.length === 0}
-                        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold py-2.5 rounded-lg transition-colors text-xs uppercase tracking-wider"
-                      >
-                        Rolle anlegen
-                      </button>
-                    </form>
-                  </div>
-
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 space-y-4">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">Neuer Benutzer</h3>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-500">Erstelle einen Login für diesen Verein und weise direkt eine Rolle zu.</p>
-                    </div>
-                    <form onSubmit={handleCreateUser} className="space-y-3">
-                      <label className="block space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Vollständiger Name</span>
-                        <input
-                          type="text"
-                          placeholder="Name des Benutzers"
-                          value={newUserFullName}
-                          onChange={(e) => setNewUserFullName(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                        />
-                      </label>
-                      <label className="block space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">E-Mail *</span>
-                        <input
-                          type="email"
-                          placeholder="name@example.at"
-                          value={newUserEmail}
-                          onChange={(e) => setNewUserEmail(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                        />
-                      </label>
-                      <label className="block space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Initiales Passwort *</span>
-                        <input
-                          type="password"
-                          placeholder="Mindestens 6 Zeichen"
-                          value={newUserPassword}
-                          onChange={(e) => setNewUserPassword(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                        />
-                      </label>
-                      <label className="block space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Rolle *</span>
-                        <select
-                          value={newUserRoleId}
-                          onChange={(e) => setNewUserRoleId(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                        >
-                          <option value="">Rolle auswählen</option>
-                          {appRoles.map((role) => (
-                            <option key={role.id} value={role.id}>{role.name}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <button
-                        type="submit"
-                        disabled={userAdminLoading || !newUserEmail || !newUserPassword || !newUserRoleId}
-                        className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold py-2.5 rounded-lg transition-colors text-xs uppercase tracking-wider"
-                      >
-                        Benutzer anlegen
-                      </button>
-                    </form>
-                    </div>
-                  </div>
-                </details>
-
-                <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <summary className="flex cursor-pointer list-none flex-col gap-3 p-6 sm:flex-row sm:items-start sm:justify-between [&::-webkit-details-marker]:hidden">
-                    <div className="flex items-start gap-3">
-                      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-blue-600 transition-transform group-open:rotate-90" />
-                      <div>
                         <h3 className="text-lg font-bold text-slate-900">Benutzerverwaltung</h3>
                         <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Bestehende Benutzer, Rollen und Zugänge für diesen Verein.</p>
                       </div>
@@ -6588,7 +6437,69 @@ export default function Page() {
                       {appUsers.length} Benutzer
                     </span>
                   </summary>
-                  <div className="space-y-2 border-t border-slate-200 px-6 pb-6 pt-5">
+                  <div className="space-y-5 border-t border-slate-200 px-6 pb-6 pt-5">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 space-y-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900">Neuer Benutzer</h3>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-500">Erstelle einen Login für diesen Verein und weise direkt eine Rolle zu.</p>
+                      </div>
+                      <form onSubmit={handleCreateUser} className="space-y-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Vollständiger Name</span>
+                            <input
+                              type="text"
+                              placeholder="Name des Benutzers"
+                              value={newUserFullName}
+                              onChange={(e) => setNewUserFullName(e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                            />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">E-Mail *</span>
+                            <input
+                              type="email"
+                              placeholder="name@example.at"
+                              value={newUserEmail}
+                              onChange={(e) => setNewUserEmail(e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                            />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Initiales Passwort *</span>
+                            <input
+                              type="password"
+                              placeholder="Mindestens 6 Zeichen"
+                              value={newUserPassword}
+                              onChange={(e) => setNewUserPassword(e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                            />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Rolle *</span>
+                            <select
+                              value={newUserRoleId}
+                              onChange={(e) => setNewUserRoleId(e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                            >
+                              <option value="">Rolle auswählen</option>
+                              {appRoles.map((role) => (
+                                <option key={role.id} value={role.id}>{role.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={userAdminLoading || !newUserEmail || !newUserPassword || !newUserRoleId}
+                          className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold py-2.5 rounded-lg transition-colors text-xs uppercase tracking-wider sm:w-auto sm:px-5"
+                        >
+                          Benutzer anlegen
+                        </button>
+                      </form>
+                    </div>
+
+                    <div className="space-y-2">
                     {appUsers.map((user) => (
                       <div key={user.user_id} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_220px_auto] sm:items-center">
                         <div className="min-w-0">
@@ -6621,6 +6532,7 @@ export default function Page() {
                     {appUsers.length === 0 && (
                       <p className="text-xs text-slate-500">Noch keine Benutzerprofile vorhanden.</p>
                     )}
+                    </div>
                   </div>
                 </details>
 
@@ -6637,7 +6549,84 @@ export default function Page() {
                       {appRoles.length} Rollen
                     </span>
                   </summary>
-                  <div className="space-y-3 border-t border-slate-200 px-6 pb-6 pt-5">
+                  <div className="space-y-5 border-t border-slate-200 px-6 pb-6 pt-5">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 space-y-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900">Neue Rolle</h3>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-500">Lege fest, welche Bereiche Benutzer dieser Rolle sehen und bearbeiten dürfen.</p>
+                      </div>
+                      <form onSubmit={handleCreateRole} className="space-y-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Rollenname *</span>
+                            <input
+                              type="text"
+                              placeholder="z.B. Kassier, Schichtleitung"
+                              value={newRoleName}
+                              onChange={(e) => setNewRoleName(e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                            />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Beschreibung</span>
+                            <input
+                              type="text"
+                              placeholder="Kurze interne Beschreibung"
+                              value={newRoleDescription}
+                              onChange={(e) => setNewRoleDescription(e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                            />
+                          </label>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {ADMIN_PERMISSIONS.map((permission) => (
+                            <label key={permission.id} className="flex items-center space-x-2 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={newRolePermissions.includes(permission.id)}
+                                onChange={(e) => {
+                                  toggleRolePermission(setNewRolePermissions, permission.id, e.target.checked);
+                                }}
+                              />
+                              <span>{permission.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {newRolePermissions.includes("dashboard") && (
+                          <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 space-y-2">
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Sichtbare Dashboard-Kacheln</p>
+                              <p className="text-[10px] text-blue-700/80 mt-0.5 leading-normal">
+                                Diese Auswahl gilt nur, wenn die Rolle Zugriff auf das Dashboard hat.
+                              </p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                              {DASHBOARD_WIDGET_PERMISSIONS.map((permission) => (
+                                <label key={permission.id} className="flex items-center space-x-2 text-xs text-slate-600 bg-white border border-blue-100 rounded-lg px-3 py-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={newRolePermissions.includes(permission.id)}
+                                    onChange={(e) => {
+                                      toggleRolePermission(setNewRolePermissions, permission.id, e.target.checked);
+                                    }}
+                                  />
+                                  <span>{permission.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={userAdminLoading || !newRoleName.trim() || newRolePermissions.length === 0}
+                          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold py-2.5 rounded-lg transition-colors text-xs uppercase tracking-wider sm:w-auto sm:px-5"
+                        >
+                          Rolle anlegen
+                        </button>
+                      </form>
+                    </div>
+
+                    <div className="space-y-3">
                     {appRoles.map((role) => {
                       const isEditing = editingRoleId === role.id;
 
@@ -6779,6 +6768,7 @@ export default function Page() {
                     {appRoles.length === 0 && (
                       <p className="text-xs text-slate-500">Noch keine Rollen vorhanden.</p>
                     )}
+                    </div>
                   </div>
                 </details>
               </motion.div>
