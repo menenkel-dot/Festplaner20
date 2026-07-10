@@ -109,8 +109,23 @@ interface FinancialItem {
   description: string;
   amount: number;
   status: 'Bezahlt' | 'Offen' | 'Erhalten';
+  accountSplits?: FinanceAccountSplit[];
   attachmentName?: string;
   attachmentData?: string;
+}
+
+interface FinanceAccount {
+  id: string;
+  name: string;
+  bankName?: string;
+  iban?: string;
+  description?: string;
+  isActive: boolean;
+}
+
+interface FinanceAccountSplit {
+  accountId: string;
+  amount: number;
 }
 
 interface FestDay {
@@ -316,6 +331,7 @@ const LOCAL_STORAGE_DATA_KEYS = [
   "vfp_invitation_contacts",
   "vfp_shifts",
   "vfp_reservations",
+  "vfp_finance_accounts",
   "vfp_finances",
   "vfp_budget",
   "vfp_active_festival_id",
@@ -448,6 +464,7 @@ const DEFAULT_PROTOCOLS: Protocol[] = [];
 const DEFAULT_INVITATIONS: InvitationContact[] = [];
 const DEFAULT_SHIFTS: Shift[] = [];
 const DEFAULT_RESERVATIONS: Reservation[] = [];
+const DEFAULT_FINANCE_ACCOUNTS: FinanceAccount[] = [];
 const DEFAULT_FINANCES: FinancialItem[] = [];
 const DEFAULT_INVITATION_STATUS: InvitationStatus = "Nicht versendet";
 const INVITATION_STATUSES: InvitationStatus[] = [
@@ -508,6 +525,7 @@ const createEmptySnapshot = (): FestPlanerSnapshot => ({
   invitations: [],
   shifts: [],
   reservations: [],
+  financeAccounts: [],
   finances: [],
   budget: 0,
 });
@@ -527,6 +545,7 @@ export default function Page() {
   const [invitations, setInvitations] = React.useState<InvitationContact[]>(DEFAULT_INVITATIONS);
   const [shifts, setShifts] = React.useState<Shift[]>(DEFAULT_SHIFTS);
   const [reservations, setReservations] = React.useState<Reservation[]>(DEFAULT_RESERVATIONS);
+  const [financeAccounts, setFinanceAccounts] = React.useState<FinanceAccount[]>(DEFAULT_FINANCE_ACCOUNTS);
   const [finances, setFinances] = React.useState<FinancialItem[]>(DEFAULT_FINANCES);
   const [budget, setBudget] = React.useState<number>(0);
 
@@ -616,6 +635,14 @@ export default function Page() {
   const [newFinStatus, setNewFinStatus] = React.useState<'Bezahlt' | 'Offen' | 'Erhalten'>('Offen');
   const [newFinAttachmentName, setNewFinAttachmentName] = React.useState("");
   const [newFinAttachmentData, setNewFinAttachmentData] = React.useState("");
+  const [newFinAccountId, setNewFinAccountId] = React.useState("");
+  const [newFinUseSplit, setNewFinUseSplit] = React.useState(false);
+  const [newFinSplits, setNewFinSplits] = React.useState<FinanceAccountSplit[]>([]);
+  const [newFinanceAccountName, setNewFinanceAccountName] = React.useState("");
+  const [newFinanceAccountBankName, setNewFinanceAccountBankName] = React.useState("");
+  const [newFinanceAccountIban, setNewFinanceAccountIban] = React.useState("");
+  const [newFinanceAccountDescription, setNewFinanceAccountDescription] = React.useState("");
+  const [editingFinanceAccountId, setEditingFinanceAccountId] = React.useState<string | null>(null);
   const [dragActive, setDragActive] = React.useState(false);
   const [financePaymentConfirmId, setFinancePaymentConfirmId] = React.useState<string | null>(null);
 
@@ -732,6 +759,7 @@ export default function Page() {
       const storedInvitations = localStorage.getItem("vfp_invitation_contacts");
       const storedShifts = localStorage.getItem("vfp_shifts");
       const storedReservations = localStorage.getItem("vfp_reservations");
+      const storedFinanceAccounts = localStorage.getItem("vfp_finance_accounts");
       const storedFinances = localStorage.getItem("vfp_finances");
       const storedBudget = localStorage.getItem("vfp_budget");
 
@@ -767,6 +795,7 @@ export default function Page() {
       }
       if (storedShifts) setShifts(normalizeStoredData(JSON.parse(storedShifts)));
       if (storedReservations) setReservations(normalizeStoredData(JSON.parse(storedReservations)));
+      if (storedFinanceAccounts) setFinanceAccounts(normalizeStoredData(JSON.parse(storedFinanceAccounts)));
       if (storedFinances) setFinances(normalizeStoredData(JSON.parse(storedFinances)));
       if (storedBudget && !Number.isNaN(Number(storedBudget))) setBudget(Number(storedBudget));
     }, 0);
@@ -837,6 +866,13 @@ export default function Page() {
     localStorage.setItem(key, JSON.stringify(data));
   };
 
+  const createClientId = () => {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+    return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (char) =>
+      (Number(char) ^ Math.random() * 16 >> Number(char) / 4).toString(16),
+    );
+  };
+
   const getCurrentSnapshot = React.useCallback((): FestPlanerSnapshot => ({
     festInfo,
     program,
@@ -845,9 +881,10 @@ export default function Page() {
     invitations,
     shifts,
     reservations,
+    financeAccounts,
     finances,
     budget,
-  }), [budget, checklist, festInfo, finances, invitations, program, protocols, reservations, shifts]);
+  }), [budget, checklist, festInfo, financeAccounts, finances, invitations, program, protocols, reservations, shifts]);
 
   React.useEffect(() => {
     currentSnapshotRef.current = getCurrentSnapshot();
@@ -885,6 +922,7 @@ export default function Page() {
     setInvitations((snapshot.invitations ?? []).map(normalizeInvitationContact));
     setShifts(snapshot.shifts);
     setReservations(snapshot.reservations);
+    setFinanceAccounts(snapshot.financeAccounts ?? []);
     setFinances(snapshot.finances);
     setBudget(snapshot.budget);
 
@@ -895,6 +933,7 @@ export default function Page() {
     saveToStorage("vfp_invitation_contacts", (snapshot.invitations ?? []).map(normalizeInvitationContact));
     saveToStorage("vfp_shifts", snapshot.shifts);
     saveToStorage("vfp_reservations", snapshot.reservations);
+    saveToStorage("vfp_finance_accounts", snapshot.financeAccounts ?? []);
     saveToStorage("vfp_finances", snapshot.finances);
     saveToStorage("vfp_budget", snapshot.budget);
     lastSyncedPayloadRef.current = JSON.stringify(snapshot);
@@ -966,7 +1005,8 @@ export default function Page() {
     syncTimerRef.current = setTimeout(() => {
       const savePromise =
         isFinanceOnlyEditor && activeFestivalId
-          ? saveFinancialItemsToSupabase(supabase, activeFestivalId, {
+          ? saveFinancialItemsToSupabase(supabase, activeFestivalId, activeClubId, {
+              financeAccounts: snapshot.financeAccounts,
               finances: snapshot.finances,
               budget: snapshot.budget,
             }).then(() => activeFestivalId)
@@ -2372,19 +2412,110 @@ export default function Page() {
   };
 
   // Finances
+  const resetFinanceAccountForm = () => {
+    setNewFinanceAccountName("");
+    setNewFinanceAccountBankName("");
+    setNewFinanceAccountIban("");
+    setNewFinanceAccountDescription("");
+    setEditingFinanceAccountId(null);
+  };
+
+  const handleSaveFinanceAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFinanceAccountName.trim()) {
+      showToast("Bitte einen Kontonamen eintragen.", "error");
+      return;
+    }
+
+    const nextAccount: FinanceAccount = {
+      id: editingFinanceAccountId ?? createClientId(),
+      name: newFinanceAccountName.trim(),
+      bankName: newFinanceAccountBankName.trim() || undefined,
+      iban: newFinanceAccountIban.trim() || undefined,
+      description: newFinanceAccountDescription.trim() || undefined,
+      isActive: true,
+    };
+    const updated = editingFinanceAccountId
+      ? financeAccounts.map((account) => account.id === editingFinanceAccountId ? nextAccount : account)
+      : [...financeAccounts, nextAccount];
+
+    setFinanceAccounts(updated);
+    saveToStorage("vfp_finance_accounts", updated);
+    resetFinanceAccountForm();
+    showToast(editingFinanceAccountId ? "Konto aktualisiert." : "Konto angelegt.", "success");
+  };
+
+  const handleEditFinanceAccount = (account: FinanceAccount) => {
+    setEditingFinanceAccountId(account.id);
+    setNewFinanceAccountName(account.name);
+    setNewFinanceAccountBankName(account.bankName ?? "");
+    setNewFinanceAccountIban(account.iban ?? "");
+    setNewFinanceAccountDescription(account.description ?? "");
+  };
+
+  const handleDeactivateFinanceAccount = (accountId: string) => {
+    const updated = financeAccounts.map((account) => account.id === accountId ? { ...account, isActive: false } : account);
+    setFinanceAccounts(updated);
+    saveToStorage("vfp_finance_accounts", updated);
+    if (newFinAccountId === accountId) setNewFinAccountId("");
+    setNewFinSplits((current) => current.filter((split) => split.accountId !== accountId));
+    showToast("Konto deaktiviert. Bestehende Buchungen bleiben nachvollziehbar.", "info");
+  };
+
+  const addFinanceSplitRow = () => {
+    setNewFinSplits((current) => [...current, { accountId: "", amount: 0 }]);
+  };
+
+  const updateFinanceSplit = (index: number, patch: Partial<FinanceAccountSplit>) => {
+    setNewFinSplits((current) => current.map((split, splitIndex) => (
+      splitIndex === index ? { ...split, ...patch } : split
+    )));
+  };
+
+  const removeFinanceSplit = (index: number) => {
+    setNewFinSplits((current) => current.filter((_, splitIndex) => splitIndex !== index));
+  };
+
   const handleAddFinance = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFinCat || !newFinDesc || !newFinAmount) {
       showToast("Bitte füllen Sie Kategorie, Beschreibung und Betrag aus.", "error");
       return;
     }
+    const financeAmount = Number(newFinAmount);
+    if (!Number.isFinite(financeAmount) || financeAmount <= 0) {
+      showToast("Bitte einen gültigen Betrag eintragen.", "error");
+      return;
+    }
+
+    const accountSplits = newFinUseSplit
+      ? newFinSplits
+          .filter((split) => split.accountId && Number(split.amount) > 0)
+          .map((split) => ({ accountId: split.accountId, amount: Number(split.amount) }))
+      : newFinAccountId
+        ? [{ accountId: newFinAccountId, amount: financeAmount }]
+        : [];
+
+    if (newFinUseSplit) {
+      if (accountSplits.length < 2) {
+        showToast("Bitte mindestens zwei Split-Zeilen mit Konto und Betrag erfassen.", "error");
+        return;
+      }
+      const splitTotal = accountSplits.reduce((sum, split) => sum + split.amount, 0);
+      if (Math.round(splitTotal * 100) !== Math.round(financeAmount * 100)) {
+        showToast("Die Split-Beträge müssen exakt der Gesamtsumme entsprechen.", "error");
+        return;
+      }
+    }
+
     const newItem: FinancialItem = {
-      id: "f_" + Date.now().toString(),
+      id: createClientId(),
       type: newFinType,
       category: newFinCat,
       description: newFinDesc,
-      amount: Number(newFinAmount),
+      amount: financeAmount,
       status: newFinType === 'expense' ? (newFinStatus === 'Erhalten' ? 'Offen' : newFinStatus) : 'Erhalten',
+      accountSplits,
       attachmentName: newFinAttachmentName || undefined,
       attachmentData: newFinAttachmentData || undefined
     };
@@ -2396,6 +2527,9 @@ export default function Page() {
     setNewFinAmount("");
     setNewFinAttachmentName("");
     setNewFinAttachmentData("");
+    setNewFinAccountId("");
+    setNewFinUseSplit(false);
+    setNewFinSplits([]);
     setShowFinForm(false);
     showToast("Finanzbuchung erfolgreich erfasst!");
   };
@@ -2437,6 +2571,9 @@ export default function Page() {
         { value: "Beschreibung", fontWeight: "bold" },
         { value: "Betrag EUR", fontWeight: "bold" },
         { value: "Status", fontWeight: "bold" },
+        { value: "Konto", fontWeight: "bold" },
+        { value: "Split", fontWeight: "bold" },
+        { value: "Split-Beträge", fontWeight: "bold" },
         { value: "Beleg", fontWeight: "bold" },
       ],
       ...finances.map((item) => [
@@ -2445,6 +2582,9 @@ export default function Page() {
         { value: item.description },
         { value: item.type === "expense" ? -item.amount : item.amount, format: "#,##0.00" },
         { value: item.status },
+        { value: item.accountSplits?.length === 1 ? getFinanceAccountName(item.accountSplits[0].accountId) : item.accountSplits?.length ? "" : "Nicht zugeordnet" },
+        { value: (item.accountSplits?.length ?? 0) > 1 ? "Ja" : "Nein" },
+        { value: getFinanceSplitLabel(item) },
         { value: item.attachmentName ?? "" },
       ]),
     ];
@@ -2463,13 +2603,16 @@ export default function Page() {
       ["Erwartete Ausgaben", totalExpenses.toFixed(2)],
       ["Vorläufiger Gewinn", netBalance.toFixed(2)],
       [],
-      ["Typ", "Kategorie", "Beschreibung", "Betrag EUR", "Status", "Beleg"],
+      ["Typ", "Kategorie", "Beschreibung", "Betrag EUR", "Status", "Konto", "Split", "Split-Beträge", "Beleg"],
       ...finances.map((item) => [
         item.type === "expense" ? "Ausgabe" : "Einnahme",
         item.category,
         item.description,
         (item.type === "expense" ? -item.amount : item.amount).toFixed(2),
         item.status,
+        item.accountSplits?.length === 1 ? getFinanceAccountName(item.accountSplits[0].accountId) : item.accountSplits?.length ? "" : "Nicht zugeordnet",
+        (item.accountSplits?.length ?? 0) > 1 ? "Ja" : "Nein",
+        getFinanceSplitLabel(item),
         item.attachmentName ?? "",
       ]),
     ];
@@ -2912,6 +3055,26 @@ export default function Page() {
   const totalExpenses = finances.filter(f => f.type === "expense").reduce((sum, f) => sum + f.amount, 0);
   const totalRevenues = finances.filter(f => f.type === "revenue").reduce((sum, f) => sum + f.amount, 0);
   const netBalance = totalRevenues - totalExpenses;
+  const activeFinanceAccounts = financeAccounts.filter((account) => account.isActive);
+  const getFinanceAccountName = (accountId: string) => financeAccounts.find((account) => account.id === accountId)?.name ?? "Unbekanntes Konto";
+  const getFinanceSplitLabel = (item: FinancialItem) => {
+    const splits = item.accountSplits ?? [];
+    if (splits.length === 0) return "Nicht zugeordnet";
+    if (splits.length === 1) return getFinanceAccountName(splits[0].accountId);
+    return splits.map((split) => `${getFinanceAccountName(split.accountId)}: ${split.amount.toFixed(2)} EUR`).join("; ");
+  };
+  const financeAccountTotals = financeAccounts.map((account) => {
+    const accountSplits = finances.flatMap((item) =>
+      (item.accountSplits ?? [])
+        .filter((split) => split.accountId === account.id)
+        .map((split) => ({ type: item.type, amount: split.amount })),
+    );
+    const revenues = accountSplits.filter((split) => split.type === "revenue").reduce((sum, split) => sum + split.amount, 0);
+    const expenses = accountSplits.filter((split) => split.type === "expense").reduce((sum, split) => sum + split.amount, 0);
+    return { accountId: account.id, revenues, expenses, balance: revenues - expenses };
+  });
+  const getFinanceAccountTotals = (accountId: string) =>
+    financeAccountTotals.find((totals) => totals.accountId === accountId) ?? { accountId, revenues: 0, expenses: 0, balance: 0 };
   const checklistProgress = checklist.length > 0 
     ? Math.round((checklist.filter(c => c.completed).length / checklist.length) * 100) 
     : 0;
@@ -6820,6 +6983,138 @@ export default function Page() {
 
                 </div>
 
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Konten</h3>
+                      <p className="mt-1 text-xs text-slate-500">Lege Bankkonten oder Kassen an und ordne Buchungen gezielt zu.</p>
+                    </div>
+                    <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      {activeFinanceAccounts.length} aktiv
+                    </span>
+                  </div>
+
+                  <form onSubmit={handleSaveFinanceAccount} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end">
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Kontoname *</span>
+                      <input
+                        type="text"
+                        value={newFinanceAccountName}
+                        onChange={(e) => setNewFinanceAccountName(e.target.value)}
+                        placeholder="z.B. Hauptkonto, Barkasse"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Bank</span>
+                      <input
+                        type="text"
+                        value={newFinanceAccountBankName}
+                        onChange={(e) => setNewFinanceAccountBankName(e.target.value)}
+                        placeholder="Bankname"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">IBAN</span>
+                      <input
+                        type="text"
+                        value={newFinanceAccountIban}
+                        onChange={(e) => setNewFinanceAccountIban(e.target.value)}
+                        placeholder="Optional"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Beschreibung</span>
+                      <input
+                        type="text"
+                        value={newFinanceAccountDescription}
+                        onChange={(e) => setNewFinanceAccountDescription(e.target.value)}
+                        placeholder="Optional"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600"
+                      />
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        className="inline-flex flex-1 items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-slate-800 lg:flex-none"
+                      >
+                        {editingFinanceAccountId ? "Speichern" : "Konto anlegen"}
+                      </button>
+                      {editingFinanceAccountId && (
+                        <button
+                          type="button"
+                          onClick={resetFinanceAccountForm}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-50"
+                        >
+                          Abbrechen
+                        </button>
+                      )}
+                    </div>
+                  </form>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {financeAccounts.map((account) => {
+                      const totals = getFinanceAccountTotals(account.id);
+                      return (
+                        <div key={account.id} className={`rounded-lg border p-4 ${account.isActive ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50 opacity-70"}`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-slate-900">{account.name}</p>
+                              <p className="truncate text-[11px] text-slate-500">{account.bankName || "Keine Bank hinterlegt"}</p>
+                              {account.iban && <p className="truncate text-[10px] font-medium text-slate-400">{account.iban}</p>}
+                            </div>
+                            <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${account.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                              {account.isActive ? "Aktiv" : "Inaktiv"}
+                            </span>
+                          </div>
+                          {account.description && <p className="mt-2 text-[11px] text-slate-500">{account.description}</p>}
+                          <div className="mt-3 grid grid-cols-3 gap-2 text-[10px]">
+                            <div>
+                              <span className="block font-bold uppercase tracking-wider text-slate-400">Einnahmen</span>
+                              <strong className="text-emerald-700">{totals.revenues.toFixed(2)} €</strong>
+                            </div>
+                            <div>
+                              <span className="block font-bold uppercase tracking-wider text-slate-400">Ausgaben</span>
+                              <strong className="text-rose-700">{totals.expenses.toFixed(2)} €</strong>
+                            </div>
+                            <div>
+                              <span className="block font-bold uppercase tracking-wider text-slate-400">Saldo</span>
+                              <strong className={totals.balance >= 0 ? "text-blue-700" : "text-rose-700"}>{totals.balance.toFixed(2)} €</strong>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <button
+                              type="button"
+                              onClick={() => handleEditFinanceAccount(account)}
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Bearbeiten
+                            </button>
+                            {account.isActive && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeactivateFinanceAccount(account.id)}
+                                className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-50"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Deaktivieren
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {financeAccounts.length === 0 && (
+                      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-slate-500 md:col-span-2 xl:col-span-3">
+                        Noch keine Konten angelegt. Buchungen können weiterhin ohne Zuordnung erfasst werden.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Ledger & Transactions layout */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                   
@@ -6863,6 +7158,9 @@ export default function Page() {
                             <h4 className="text-xs font-bold text-slate-800 leading-tight">{f.description}</h4>
                             <div className="flex flex-wrap items-center gap-1.5 mt-1">
                               <span className="text-[10px] text-slate-400 font-medium mr-1">Status: {f.status}</span>
+                              <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+                                Konto: {getFinanceSplitLabel(f)}
+                              </span>
                               {f.attachmentName && f.attachmentData ? (
                                 <a 
                                   href={f.attachmentData}
@@ -7025,6 +7323,92 @@ export default function Page() {
                                   <option value="Offen">Offen</option>
                                 </select>
                               </div>
+                            </div>
+
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Konto-Zuordnung</p>
+                                  <p className="mt-0.5 text-[10px] leading-normal text-slate-400">Optional einem Konto zuordnen oder auf mehrere Konten splitten.</p>
+                                </div>
+                                <label className="flex shrink-0 items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={newFinUseSplit}
+                                    onChange={(e) => {
+                                      setNewFinUseSplit(e.target.checked);
+                                      if (e.target.checked && newFinSplits.length === 0) {
+                                        setNewFinSplits([
+                                          { accountId: newFinAccountId || "", amount: Number(newFinAmount) || 0 },
+                                          { accountId: "", amount: 0 },
+                                        ]);
+                                      }
+                                    }}
+                                  />
+                                  Splitten
+                                </label>
+                              </div>
+
+                              {!newFinUseSplit ? (
+                                <label className="block space-y-1">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Konto</span>
+                                  <select
+                                    value={newFinAccountId}
+                                    onChange={(e) => setNewFinAccountId(e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                                  >
+                                    <option value="">Nicht zugeordnet</option>
+                                    {activeFinanceAccounts.map((account) => (
+                                      <option key={account.id} value={account.id}>{account.name}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : (
+                                <div className="space-y-2">
+                                  {newFinSplits.map((split, index) => (
+                                    <div key={index} className="grid grid-cols-[1fr_110px_auto] gap-2">
+                                      <select
+                                        value={split.accountId}
+                                        onChange={(e) => updateFinanceSplit(index, { accountId: e.target.value })}
+                                        className="min-w-0 bg-white border border-slate-200 rounded-lg px-2 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                                      >
+                                        <option value="">Konto wählen</option>
+                                        {activeFinanceAccounts.map((account) => (
+                                          <option key={account.id} value={account.id}>{account.name}</option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        step="0.01"
+                                        value={split.amount || ""}
+                                        onChange={(e) => updateFinanceSplit(index, { amount: Number(e.target.value) })}
+                                        placeholder="Betrag"
+                                        className="bg-white border border-slate-200 rounded-lg px-2 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => removeFinanceSplit(index)}
+                                        className="rounded-lg border border-slate-200 bg-white p-2 text-slate-400 hover:text-rose-600"
+                                        title="Split-Zeile entfernen"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={addFinanceSplitRow}
+                                    className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-50"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Split-Zeile hinzufügen
+                                  </button>
+                                  <p className="text-[10px] font-medium text-slate-500">
+                                    Split-Summe: {newFinSplits.reduce((sum, split) => sum + (Number(split.amount) || 0), 0).toFixed(2)} € von {(Number(newFinAmount) || 0).toFixed(2)} €
+                                  </p>
+                                </div>
+                              )}
                             </div>
 
                             {/* File Attachment Uploader */}

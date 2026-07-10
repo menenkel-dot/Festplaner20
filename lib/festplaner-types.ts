@@ -82,8 +82,23 @@ export interface FinancialItem {
   description: string;
   amount: number;
   status: FinancialStatus;
+  accountSplits?: FinanceAccountSplit[];
   attachmentName?: string;
   attachmentData?: string;
+}
+
+export interface FinanceAccount {
+  id: string;
+  name: string;
+  bankName?: string;
+  iban?: string;
+  description?: string;
+  isActive: boolean;
+}
+
+export interface FinanceAccountSplit {
+  accountId: string;
+  amount: number;
 }
 
 export interface FestDay {

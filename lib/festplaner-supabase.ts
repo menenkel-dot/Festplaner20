@@ -1,6 +1,7 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type {
   ChecklistItem,
+  FinanceAccount,
   FestInfo,
   FinancialItem,
   InvitationContact,
@@ -18,12 +19,14 @@ export interface FestPlanerSnapshot {
   invitations: InvitationContact[];
   shifts: Shift[];
   reservations: Reservation[];
+  financeAccounts: FinanceAccount[];
   finances: FinancialItem[];
   budget: number;
 }
 
 export interface FinanceSnapshot {
   finances: FinancialItem[];
+  financeAccounts: FinanceAccount[];
   budget: number;
 }
 
@@ -67,6 +70,10 @@ interface InvitationContactRow {
   responded_at?: string | null;
   guest_count?: number | string | null;
   response_note?: string | null;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function getClubLogoUrl(path?: string | null) {
@@ -372,6 +379,7 @@ async function replaceFestivalChildren(
   if (snapshot.finances.length > 0) {
     const { error } = await supabase.from("financial_items").insert(
       snapshot.finances.map((item) => ({
+        ...(isUuid(item.id) ? { id: item.id } : {}),
         festival_id: festivalId,
         type: item.type,
         category: item.category,
@@ -383,7 +391,49 @@ async function replaceFestivalChildren(
       })),
     );
     if (error) throw error;
+
+    const splits = snapshot.finances.flatMap((item) =>
+      isUuid(item.id)
+        ? (item.accountSplits ?? [])
+            .filter((split) => isUuid(split.accountId) && split.amount > 0)
+            .map((split) => ({
+              financial_item_id: item.id,
+              account_id: split.accountId,
+              amount: split.amount,
+            }))
+        : [],
+    );
+
+    if (splits.length > 0) {
+      const { error: splitError } = await supabase.from("financial_item_account_splits").insert(splits);
+      if (splitError) throw splitError;
+    }
   }
+}
+
+async function saveFinanceAccountsToSupabase(
+  supabase: SupabaseClient,
+  clubId: string,
+  accounts: FinanceAccount[],
+) {
+  if (accounts.length === 0) return;
+
+  const { error } = await supabase.from("club_finance_accounts").upsert(
+    accounts
+      .filter((account) => isUuid(account.id) && account.name.trim())
+      .map((account) => ({
+        id: account.id,
+        club_id: clubId,
+        name: account.name.trim(),
+        bank_name: account.bankName?.trim() || null,
+        iban: account.iban?.trim() || null,
+        description: account.description?.trim() || null,
+        is_active: account.isActive,
+      })),
+    { onConflict: "id" },
+  );
+
+  if (error) throw error;
 }
 
 export async function saveActiveFestivalToSupabase(
@@ -441,6 +491,7 @@ export async function saveActiveFestivalToSupabase(
     activeFestivalId = festival.id as string;
   }
 
+  await saveFinanceAccountsToSupabase(supabase, clubId, snapshot.financeAccounts ?? []);
   await replaceFestivalChildren(supabase, activeFestivalId, snapshot);
   await ensurePublicLinksForFestival(supabase, clubId, activeFestivalId);
   return activeFestivalId;
@@ -472,6 +523,7 @@ async function ensurePublicLinksForFestival(supabase: SupabaseClient, clubId: st
 export async function saveFinancialItemsToSupabase(
   supabase: SupabaseClient,
   festivalId: string,
+  clubId: string,
   snapshot: FinanceSnapshot,
 ) {
   const { error: budgetError } = await supabase
@@ -480,6 +532,8 @@ export async function saveFinancialItemsToSupabase(
     .eq("id", festivalId);
 
   if (budgetError) throw budgetError;
+
+  await saveFinanceAccountsToSupabase(supabase, clubId, snapshot.financeAccounts ?? []);
 
   const { error: deleteError } = await supabase
     .from("financial_items")
@@ -492,6 +546,7 @@ export async function saveFinancialItemsToSupabase(
 
   const { error: insertError } = await supabase.from("financial_items").insert(
     snapshot.finances.map((item) => ({
+      ...(isUuid(item.id) ? { id: item.id } : {}),
       festival_id: festivalId,
       type: item.type,
       category: item.category,
@@ -504,6 +559,23 @@ export async function saveFinancialItemsToSupabase(
   );
 
   if (insertError) throw insertError;
+
+  const splits = snapshot.finances.flatMap((item) =>
+    isUuid(item.id)
+      ? (item.accountSplits ?? [])
+          .filter((split) => isUuid(split.accountId) && split.amount > 0)
+          .map((split) => ({
+            financial_item_id: item.id,
+            account_id: split.accountId,
+            amount: split.amount,
+          }))
+      : [],
+  );
+
+  if (splits.length > 0) {
+    const { error: splitError } = await supabase.from("financial_item_account_splits").insert(splits);
+    if (splitError) throw splitError;
+  }
 }
 
 
@@ -533,6 +605,7 @@ export async function importSnapshotToSupabase(
   if (!festival?.id) throw new Error("Supabase hat keine Festival-ID zurückgegeben.");
 
   const festivalId = festival.id as string;
+  await saveFinanceAccountsToSupabase(supabase, clubId, snapshot.financeAccounts ?? []);
   await replaceFestivalChildren(supabase, festivalId, snapshot);
   await ensurePublicLinksForFestival(supabase, clubId, festivalId);
 
@@ -569,6 +642,7 @@ export async function loadClubFestivalFromSupabase(
     shiftsResult,
     reservationsResult,
     financesResult,
+    financeAccountsResult,
   ] = await Promise.all([
     supabase
       .from("festival_days")
@@ -606,6 +680,11 @@ export async function loadClubFestivalFromSupabase(
       .select("id,type,category,description,amount,status,attachment_name,attachment_data")
       .eq("festival_id", festival.id)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("club_finance_accounts")
+      .select("id,name,bank_name,iban,description,is_active")
+      .eq("club_id", clubId)
+      .order("created_at", { ascending: true }),
   ]);
 
   const results = [
@@ -616,9 +695,32 @@ export async function loadClubFestivalFromSupabase(
     shiftsResult,
     reservationsResult,
     financesResult,
+    financeAccountsResult,
   ];
   const failed = results.find((result) => result.error);
   if (failed?.error) throw failed.error;
+
+  const financeIds = (financesResult.data ?? []).map((item) => String(item.id));
+  const financeSplitsResult = financeIds.length > 0
+    ? await supabase
+        .from("financial_item_account_splits")
+        .select("financial_item_id,account_id,amount")
+        .in("financial_item_id", financeIds)
+        .order("created_at", { ascending: true })
+    : { data: [], error: null };
+
+  if (financeSplitsResult.error) throw financeSplitsResult.error;
+
+  const splitsByFinanceId = new Map<string, { accountId: string; amount: number }[]>();
+  for (const split of financeSplitsResult.data ?? []) {
+    const financeId = String(split.financial_item_id);
+    const existing = splitsByFinanceId.get(financeId) ?? [];
+    existing.push({
+      accountId: String(split.account_id),
+      amount: Number(split.amount),
+    });
+    splitsByFinanceId.set(financeId, existing);
+  }
 
   const snapshot: FestPlanerSnapshot = {
     festInfo: {
@@ -709,6 +811,14 @@ export async function loadClubFestivalFromSupabase(
       time: String(item.time_label),
       status: mapReservationStatusToUi(String(item.status)),
     })),
+    financeAccounts: (financeAccountsResult.data ?? []).map((account) => ({
+      id: String(account.id),
+      name: String(account.name),
+      bankName: account.bank_name ? String(account.bank_name) : undefined,
+      iban: account.iban ? String(account.iban) : undefined,
+      description: account.description ? String(account.description) : undefined,
+      isActive: account.is_active !== false,
+    })),
     finances: (financesResult.data ?? []).map((item) => ({
       id: String(item.id),
       type: item.type === "revenue" ? "revenue" : "expense",
@@ -716,6 +826,7 @@ export async function loadClubFestivalFromSupabase(
       description: String(item.description),
       amount: Number(item.amount),
       status: mapFinancialStatusToUi(String(item.status)),
+      accountSplits: splitsByFinanceId.get(String(item.id)) ?? [],
       attachmentName: item.attachment_name ? String(item.attachment_name) : undefined,
       attachmentData: item.attachment_data ? String(item.attachment_data) : undefined,
     })),
