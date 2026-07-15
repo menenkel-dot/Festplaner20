@@ -11,7 +11,7 @@ import {
   Square, FileText, ClipboardList, Euro, Check, X, Share2, 
   ExternalLink, Menu, TrendingDown, TrendingUp, HelpCircle,
   Copy, Armchair, Table2, ChevronRight, AlertCircle, Sparkles, Paperclip, FileDown,
-  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send, Bell, Upload
+  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send, Bell, Upload, Filter, ArrowUp, ArrowDown
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import type { User } from "@supabase/supabase-js";
@@ -96,10 +96,29 @@ interface Reservation {
   guestType?: 'private' | 'club';
   clubName?: string;
   clubReservationNotes?: string;
+  clubReservationAnswers?: ReservationFieldAnswer[];
   guests: number;
   date: string;
   time: string;
   status: 'Ausstehend' | 'Bestätigt' | 'Storniert';
+}
+
+type ReservationFieldType = "text" | "number" | "boolean";
+
+interface FestivalReservationField {
+  id: string;
+  label: string;
+  fieldType: ReservationFieldType;
+  helpText?: string;
+  required: boolean;
+  sortOrder: number;
+}
+
+interface ReservationFieldAnswer {
+  fieldId: string;
+  label: string;
+  fieldType: ReservationFieldType;
+  value: string | number | boolean;
 }
 
 interface FinancialItem {
@@ -331,6 +350,7 @@ const LOCAL_STORAGE_DATA_KEYS = [
   "vfp_invitation_contacts",
   "vfp_shifts",
   "vfp_reservations",
+  "vfp_reservation_fields",
   "vfp_finance_accounts",
   "vfp_finances",
   "vfp_budget",
@@ -525,6 +545,7 @@ const createEmptySnapshot = (): FestPlanerSnapshot => ({
   invitations: [],
   shifts: [],
   reservations: [],
+  reservationFields: [],
   financeAccounts: [],
   finances: [],
   budget: 0,
@@ -545,6 +566,7 @@ export default function Page() {
   const [invitations, setInvitations] = React.useState<InvitationContact[]>(DEFAULT_INVITATIONS);
   const [shifts, setShifts] = React.useState<Shift[]>(DEFAULT_SHIFTS);
   const [reservations, setReservations] = React.useState<Reservation[]>(DEFAULT_RESERVATIONS);
+  const [reservationFields, setReservationFields] = React.useState<FestivalReservationField[]>([]);
   const [financeAccounts, setFinanceAccounts] = React.useState<FinanceAccount[]>(DEFAULT_FINANCE_ACCOUNTS);
   const [finances, setFinances] = React.useState<FinancialItem[]>(DEFAULT_FINANCES);
   const [budget, setBudget] = React.useState<number>(0);
@@ -579,6 +601,9 @@ export default function Page() {
   const [newCheckTask, setNewCheckTask] = React.useState("");
   const [newCheckDueDate, setNewCheckDueDate] = React.useState("");
   const [newCheckUser, setNewCheckUser] = React.useState("");
+  const [checklistStatusFilter, setChecklistStatusFilter] = React.useState<"all" | "open" | "completed">("all");
+  const [checklistDateFilter, setChecklistDateFilter] = React.useState("");
+  const [checklistAssigneeFilter, setChecklistAssigneeFilter] = React.useState("");
 
   // Protocol Form
   const [newProtoTitle, setNewProtoTitle] = React.useState("");
@@ -623,9 +648,18 @@ export default function Page() {
   const [newResPhone, setNewResPhone] = React.useState("");
   const [newResGuestType, setNewResGuestType] = React.useState<'private' | 'club'>('private');
   const [newResClubName, setNewResClubName] = React.useState("");
+  const [newResClubNotes, setNewResClubNotes] = React.useState("");
   const [newResTableCount, setNewResTableCount] = React.useState(1);
   const [newResDate, setNewResDate] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
   const [newResTime, setNewResTime] = React.useState("");
+  const [newResFieldAnswers, setNewResFieldAnswers] = React.useState<Record<string, string | number | boolean>>({});
+
+  // Configurable fields for club reservations
+  const [newReservationFieldLabel, setNewReservationFieldLabel] = React.useState("");
+  const [newReservationFieldType, setNewReservationFieldType] = React.useState<ReservationFieldType>("number");
+  const [newReservationFieldHelpText, setNewReservationFieldHelpText] = React.useState("");
+  const [newReservationFieldRequired, setNewReservationFieldRequired] = React.useState(false);
+  const [editingReservationFieldId, setEditingReservationFieldId] = React.useState<string | null>(null);
 
   // Finances Form
   const [newFinType, setNewFinType] = React.useState<'expense' | 'revenue'>('expense');
@@ -660,6 +694,7 @@ export default function Page() {
   const [publicResGuestType, setPublicResGuestType] = React.useState<'private' | 'club'>('private');
   const [publicResClubName, setPublicResClubName] = React.useState("");
   const [publicResClubNotes, setPublicResClubNotes] = React.useState("");
+  const [publicResFieldAnswers, setPublicResFieldAnswers] = React.useState<Record<string, string | number | boolean>>({});
   const [publicResDate, setPublicResDate] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
   const [publicResTime, setPublicResTime] = React.useState("");
   const [publicResTableCount, setPublicResTableCount] = React.useState<number | "">(1);
@@ -759,6 +794,7 @@ export default function Page() {
       const storedInvitations = localStorage.getItem("vfp_invitation_contacts");
       const storedShifts = localStorage.getItem("vfp_shifts");
       const storedReservations = localStorage.getItem("vfp_reservations");
+      const storedReservationFields = localStorage.getItem("vfp_reservation_fields");
       const storedFinanceAccounts = localStorage.getItem("vfp_finance_accounts");
       const storedFinances = localStorage.getItem("vfp_finances");
       const storedBudget = localStorage.getItem("vfp_budget");
@@ -795,6 +831,7 @@ export default function Page() {
       }
       if (storedShifts) setShifts(normalizeStoredData(JSON.parse(storedShifts)));
       if (storedReservations) setReservations(normalizeStoredData(JSON.parse(storedReservations)));
+      if (storedReservationFields) setReservationFields(normalizeStoredData(JSON.parse(storedReservationFields)));
       if (storedFinanceAccounts) setFinanceAccounts(normalizeStoredData(JSON.parse(storedFinanceAccounts)));
       if (storedFinances) setFinances(normalizeStoredData(JSON.parse(storedFinances)));
       if (storedBudget && !Number.isNaN(Number(storedBudget))) setBudget(Number(storedBudget));
@@ -881,10 +918,11 @@ export default function Page() {
     invitations,
     shifts,
     reservations,
+    reservationFields,
     financeAccounts,
     finances,
     budget,
-  }), [budget, checklist, festInfo, financeAccounts, finances, invitations, program, protocols, reservations, shifts]);
+  }), [budget, checklist, festInfo, financeAccounts, finances, invitations, program, protocols, reservationFields, reservations, shifts]);
 
   React.useEffect(() => {
     currentSnapshotRef.current = getCurrentSnapshot();
@@ -922,6 +960,7 @@ export default function Page() {
     setInvitations((snapshot.invitations ?? []).map(normalizeInvitationContact));
     setShifts(snapshot.shifts);
     setReservations(snapshot.reservations);
+    setReservationFields(snapshot.reservationFields ?? []);
     setFinanceAccounts(snapshot.financeAccounts ?? []);
     setFinances(snapshot.finances);
     setBudget(snapshot.budget);
@@ -933,6 +972,7 @@ export default function Page() {
     saveToStorage("vfp_invitation_contacts", (snapshot.invitations ?? []).map(normalizeInvitationContact));
     saveToStorage("vfp_shifts", snapshot.shifts);
     saveToStorage("vfp_reservations", snapshot.reservations);
+    saveToStorage("vfp_reservation_fields", snapshot.reservationFields ?? []);
     saveToStorage("vfp_finance_accounts", snapshot.financeAccounts ?? []);
     saveToStorage("vfp_finances", snapshot.finances);
     saveToStorage("vfp_budget", snapshot.budget);
@@ -1188,6 +1228,7 @@ export default function Page() {
         setProgram(Array.isArray(data.program) ? data.program : []);
         setShifts(Array.isArray(data.shifts) ? data.shifts : []);
         setReservations(Array.isArray(data.reservations) ? data.reservations : []);
+        setReservationFields(Array.isArray(data.reservationFields) ? data.reservationFields : []);
 
         const firstConfiguredDay = data.festInfo.daysConfig?.[0];
         if (firstConfiguredDay) {
@@ -2339,6 +2380,115 @@ export default function Page() {
     showToast("Helfer aus Schicht ausgetragen.", "info");
   };
 
+  const resetReservationFieldForm = () => {
+    setEditingReservationFieldId(null);
+    setNewReservationFieldLabel("");
+    setNewReservationFieldType("number");
+    setNewReservationFieldHelpText("");
+    setNewReservationFieldRequired(false);
+  };
+
+  const handleSaveReservationField = (event: React.FormEvent) => {
+    event.preventDefault();
+    const label = newReservationFieldLabel.trim();
+    if (!label) {
+      showToast("Bitte eine Bezeichnung für das Feld eingeben.", "error");
+      return;
+    }
+    if (!editingReservationFieldId && reservationFields.length >= 20) {
+      showToast("Pro Fest sind maximal 20 individuelle Felder möglich.", "error");
+      return;
+    }
+    if (reservationFields.some((field) => field.id !== editingReservationFieldId && field.label.toLowerCase() === label.toLowerCase())) {
+      showToast("Diese Bezeichnung ist bereits vorhanden.", "error");
+      return;
+    }
+
+    const next = editingReservationFieldId
+      ? reservationFields.map((field) => field.id === editingReservationFieldId
+        ? {
+            ...field,
+            label,
+            fieldType: newReservationFieldType,
+            helpText: newReservationFieldHelpText.trim() || undefined,
+            required: newReservationFieldRequired,
+          }
+        : field)
+      : [...reservationFields, {
+          id: createClientId(),
+          label,
+          fieldType: newReservationFieldType,
+          helpText: newReservationFieldHelpText.trim() || undefined,
+          required: newReservationFieldRequired,
+          sortOrder: reservationFields.length,
+        }];
+    const normalized = next.map((field, index) => ({ ...field, sortOrder: index }));
+    setReservationFields(normalized);
+    saveToStorage("vfp_reservation_fields", normalized);
+    resetReservationFieldForm();
+    showToast(editingReservationFieldId ? "Reservierungsfeld aktualisiert." : "Reservierungsfeld angelegt.", "success");
+  };
+
+  const handleEditReservationField = (field: FestivalReservationField) => {
+    setEditingReservationFieldId(field.id);
+    setNewReservationFieldLabel(field.label);
+    setNewReservationFieldType(field.fieldType);
+    setNewReservationFieldHelpText(field.helpText ?? "");
+    setNewReservationFieldRequired(field.required);
+  };
+
+  const handleDeleteReservationField = (fieldId: string) => {
+    const next = reservationFields
+      .filter((field) => field.id !== fieldId)
+      .map((field, index) => ({ ...field, sortOrder: index }));
+    setReservationFields(next);
+    saveToStorage("vfp_reservation_fields", next);
+    if (editingReservationFieldId === fieldId) resetReservationFieldForm();
+    showToast("Reservierungsfeld entfernt. Bestehende Antworten bleiben erhalten.", "info");
+  };
+
+  const moveReservationField = (fieldId: string, direction: -1 | 1) => {
+    const index = reservationFields.findIndex((field) => field.id === fieldId);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= reservationFields.length) return;
+    const next = [...reservationFields];
+    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+    const normalized = next.map((field, sortOrder) => ({ ...field, sortOrder }));
+    setReservationFields(normalized);
+    saveToStorage("vfp_reservation_fields", normalized);
+  };
+
+  const buildReservationFieldAnswers = (values: Record<string, string | number | boolean>) => reservationFields.flatMap((field) => {
+    const rawValue = values[field.id];
+    if (rawValue === undefined || rawValue === "") return [];
+    if (field.fieldType === "text" && !String(rawValue).trim()) return [];
+    const value = field.fieldType === "number" ? Number(rawValue) : field.fieldType === "boolean" ? Boolean(rawValue) : String(rawValue).trim();
+    return [{ fieldId: field.id, label: field.label, fieldType: field.fieldType, value } satisfies ReservationFieldAnswer];
+  });
+
+  const getMissingRequiredReservationField = (values: Record<string, string | number | boolean>) => reservationFields.find((field) => {
+    if (!field.required) return false;
+    const value = values[field.id];
+    return value === undefined || value === "" || (field.fieldType === "text" && !String(value).trim());
+  });
+
+  const getInvalidNumberReservationField = (values: Record<string, string | number | boolean>) => reservationFields.find((field) => {
+    if (field.fieldType !== "number") return false;
+    const value = values[field.id];
+    if (value === undefined || value === "") return false;
+    const numberValue = Number(value);
+    return !Number.isInteger(numberValue) || numberValue < 0;
+  });
+
+  const formatReservationAnswerValue = (answer: ReservationFieldAnswer) => {
+    if (answer.fieldType === "boolean") return answer.value === true ? "Ja" : "Nein";
+    return String(answer.value);
+  };
+
+  const getReservationAnswersLabel = (reservation: Reservation) => (reservation.clubReservationAnswers ?? [])
+    .map((answer) => `${answer.label}: ${formatReservationAnswerValue(answer)}`)
+    .join("; ");
+
   // Reservations
   const handleAddReservation = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2352,6 +2502,16 @@ export default function Page() {
     }
     if (newResGuestType === "club" && !newResClubName.trim()) {
       showToast("Bitte Vereinsname eingeben.", "error");
+      return;
+    }
+    const missingField = newResGuestType === "club" ? getMissingRequiredReservationField(newResFieldAnswers) : undefined;
+    if (missingField) {
+      showToast(`Bitte „${missingField.label}“ ausfüllen.`, "error");
+      return;
+    }
+    const invalidNumberField = newResGuestType === "club" ? getInvalidNumberReservationField(newResFieldAnswers) : undefined;
+    if (invalidNumberField) {
+      showToast(`„${invalidNumberField.label}“ muss eine nichtnegative ganze Zahl sein.`, "error");
       return;
     }
     const usesTentPlan = getReservationUsesTentPlan(newResDate, newResTime);
@@ -2378,6 +2538,8 @@ export default function Page() {
       phone: newResPhone.trim(),
       guestType: newResGuestType,
       clubName: newResGuestType === "club" ? newResClubName.trim() : undefined,
+      clubReservationNotes: newResGuestType === "club" ? newResClubNotes.trim() || undefined : undefined,
+      clubReservationAnswers: newResGuestType === "club" ? buildReservationFieldAnswers(newResFieldAnswers) : [],
       guests: selectedTableIds.length * 10,
       date: newResDate,
       time: newResTime,
@@ -2392,6 +2554,8 @@ export default function Page() {
     setNewResEmail("");
     setNewResPhone("");
     setNewResClubName("");
+    setNewResClubNotes("");
+    setNewResFieldAnswers({});
     setNewResTableCount(1);
     setShowResForm(false);
     showToast("Reservierung erfolgreich eingetragen!");
@@ -2772,6 +2936,49 @@ export default function Page() {
   };
 
   // PDF Export Logic for Reservations
+  const exportReservationsToXlsx = async () => {
+    const fieldLabels = Array.from(new Set([
+      ...reservationFields.map((field) => field.label),
+      ...reservations.flatMap((reservation) => (reservation.clubReservationAnswers ?? []).map((answer) => answer.label)),
+    ]));
+    const rows: SheetData = [
+      [
+        { value: "Reservierungsname", fontWeight: "bold" },
+        { value: "Art", fontWeight: "bold" },
+        { value: "Ansprechpartner", fontWeight: "bold" },
+        { value: "E-Mail", fontWeight: "bold" },
+        { value: "Telefon", fontWeight: "bold" },
+        { value: "Datum", fontWeight: "bold" },
+        { value: "Uhrzeit", fontWeight: "bold" },
+        { value: "Tische", fontWeight: "bold" },
+        { value: "Anzahl Tische", fontWeight: "bold" },
+        { value: "Status", fontWeight: "bold" },
+        ...fieldLabels.map((label) => ({ value: label, fontWeight: "bold" as const })),
+        { value: "Weitere Bemerkungen", fontWeight: "bold" },
+      ],
+      ...reservations.map((reservation) => {
+        const answersByLabel = new Map((reservation.clubReservationAnswers ?? []).map((answer) => [answer.label, formatReservationAnswerValue(answer)]));
+        return [
+          { value: getReservationDisplayName(reservation) },
+          { value: reservation.guestType === "club" ? "Verein" : "Privatperson" },
+          { value: [reservation.firstName, reservation.lastName].filter(Boolean).join(" ") },
+          { value: reservation.email },
+          { value: reservation.phone ?? "" },
+          { value: reservation.date },
+          { value: reservation.time },
+          { value: getReservationTableIds(reservation).join(", ") },
+          { value: Math.max(1, reservation.tableCount ?? getReservationTableIds(reservation).length) },
+          { value: reservation.status },
+          ...fieldLabels.map((label) => ({ value: answersByLabel.get(label) ?? "" })),
+          { value: reservation.clubReservationNotes ?? "" },
+        ];
+      }),
+    ];
+    const safeName = (festInfo.name || "Fest").replace(/[\/:*?"<>|]+/g, "_");
+    await writeXlsxFile(rows, { sheet: "Reservierungen" }).toFile(`Reservierungen_${safeName}.xlsx`);
+    showToast("Reservierungsliste als Excel-Datei erstellt.", "success");
+  };
+
   const exportReservationsToPDF = () => {
     const doc = new jsPDF();
     
@@ -2818,7 +3025,12 @@ export default function Page() {
       });
     
     sortedRes.forEach(({ reservation: r, tableId }) => {
-      if (y > 265) {
+      const detailLines = [
+        ...(r.clubReservationAnswers ?? []).flatMap((answer) => doc.splitTextToSize(`${answer.label}: ${formatReservationAnswerValue(answer)}`, 78)),
+        ...(r.clubReservationNotes ? doc.splitTextToSize(`Weitere Bemerkungen: ${r.clubReservationNotes}`, 78) : []),
+      ];
+      const rowAdvance = Math.max(14, 14 + detailLines.length * 4);
+      if (y + rowAdvance > 280) {
         doc.addPage();
         y = 20;
         
@@ -2850,9 +3062,7 @@ export default function Page() {
       doc.setTextColor(100, 116, 139);
       doc.text(`${r.email}`, 38, y + 4, { maxWidth: 78 });
       doc.text(r.phone ? `Tel.: ${r.phone}` : "Tel.: -", 38, y + 8, { maxWidth: 78 });
-      if (r.clubReservationNotes) {
-        doc.text(`Marken: ${r.clubReservationNotes}`, 38, y + 12, { maxWidth: 78 });
-      }
+      detailLines.forEach((line: string, index: number) => doc.text(line, 38, y + 12 + index * 4));
       
       // Datum & Uhrzeit
       doc.setTextColor(15, 23, 42);
@@ -2881,7 +3091,7 @@ export default function Page() {
         doc.text("STORNIERT", 178, y);
       }
       
-      y += r.clubReservationNotes ? 18 : 14;
+      y += rowAdvance;
     });
     
     doc.setDrawColor(203, 213, 225);
@@ -2971,6 +3181,16 @@ export default function Page() {
       showToast("Bitte Vereinsname eingeben.", "error");
       return;
     }
+    const missingField = publicResGuestType === "club" ? getMissingRequiredReservationField(publicResFieldAnswers) : undefined;
+    if (missingField) {
+      showToast(`Bitte „${missingField.label}“ ausfüllen.`, "error");
+      return;
+    }
+    const invalidNumberField = publicResGuestType === "club" ? getInvalidNumberReservationField(publicResFieldAnswers) : undefined;
+    if (invalidNumberField) {
+      showToast(`„${invalidNumberField.label}“ muss eine nichtnegative ganze Zahl sein.`, "error");
+      return;
+    }
     if (publicResGuestType === "private" && selectedTableIds.length > 1) {
       showToast("Privatpersonen können einen Tisch reservieren. Für mehrere Tische bitte Verein auswählen.", "error");
       return;
@@ -3002,6 +3222,7 @@ export default function Page() {
           guestType: publicResGuestType,
           clubName: publicResGuestType === "club" ? publicResClubName.trim() : "",
           clubReservationNotes: publicResGuestType === "club" ? publicResClubNotes.trim() : "",
+          clubReservationAnswers: publicResGuestType === "club" ? buildReservationFieldAnswers(publicResFieldAnswers) : [],
           date: publicResDate,
           time: publicResTime,
           tableIds: selectedTableIds,
@@ -3029,6 +3250,7 @@ export default function Page() {
       guestType: publicResGuestType,
       clubName: publicResGuestType === "club" ? publicResClubName.trim() : undefined,
       clubReservationNotes: publicResGuestType === "club" ? publicResClubNotes.trim() : undefined,
+      clubReservationAnswers: publicResGuestType === "club" ? buildReservationFieldAnswers(publicResFieldAnswers) : [],
       guests: selectedTableIds.length * 10,
       date: publicResDate,
       time: publicResTime,
@@ -3045,6 +3267,7 @@ export default function Page() {
     setPublicResPhone("");
     setPublicResClubName("");
     setPublicResClubNotes("");
+    setPublicResFieldAnswers({});
     setPublicResSelectedTables([]);
     setPublicResTableCount(1);
     setPublicPrivacyAccepted(false);
@@ -3078,6 +3301,19 @@ export default function Page() {
   const checklistProgress = checklist.length > 0 
     ? Math.round((checklist.filter(c => c.completed).length / checklist.length) * 100) 
     : 0;
+  const checklistAssignees = React.useMemo(() => Array.from(new Set(
+    checklist
+      .map((item) => item.assignedTo?.trim())
+      .filter((assignedTo): assignedTo is string => Boolean(assignedTo)),
+  )).sort((a, b) => a.localeCompare(b, "de")), [checklist]);
+  const filteredChecklist = React.useMemo(() => checklist.filter((item) => {
+    const matchesStatus = checklistStatusFilter === "all"
+      || (checklistStatusFilter === "completed" ? item.completed : !item.completed);
+    const matchesDate = !checklistDateFilter || item.dueDate === checklistDateFilter;
+    const matchesAssignee = !checklistAssigneeFilter || item.assignedTo?.trim() === checklistAssigneeFilter;
+    return matchesStatus && matchesDate && matchesAssignee;
+  }), [checklist, checklistAssigneeFilter, checklistDateFilter, checklistStatusFilter]);
+  const hasChecklistFilters = checklistStatusFilter !== "all" || Boolean(checklistDateFilter) || Boolean(checklistAssigneeFilter);
   const filteredInvitations = React.useMemo(() => {
     const query = invitationSearch.trim().toLowerCase();
     if (!query) return invitations;
@@ -3786,14 +4022,66 @@ export default function Page() {
                         />
                       </div>
 
+                      {reservationFields.map((field) => (
+                        <div key={field.id}>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                            {field.label}{field.required ? " *" : ""}
+                          </label>
+                          {field.fieldType === "text" && (
+                            <input
+                              type="text"
+                              maxLength={500}
+                              required={field.required}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder-slate-400 focus:bg-white transition-all"
+                              placeholder={field.helpText}
+                              value={String(publicResFieldAnswers[field.id] ?? "")}
+                              onChange={(event) => setPublicResFieldAnswers((current) => ({ ...current, [field.id]: event.target.value }))}
+                            />
+                          )}
+                          {field.fieldType === "number" && (
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              required={field.required}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder-slate-400 focus:bg-white transition-all"
+                              placeholder={field.helpText}
+                              value={String(publicResFieldAnswers[field.id] ?? "")}
+                              onChange={(event) => setPublicResFieldAnswers((current) => ({ ...current, [field.id]: event.target.value }))}
+                            />
+                          )}
+                          {field.fieldType === "boolean" && (
+                            <select
+                              required={field.required}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 focus:bg-white transition-all"
+                              value={publicResFieldAnswers[field.id] === undefined ? "" : publicResFieldAnswers[field.id] === true ? "true" : "false"}
+                              onChange={(event) => setPublicResFieldAnswers((current) => {
+                                const next = { ...current };
+                                if (!event.target.value) delete next[field.id];
+                                else next[field.id] = event.target.value === "true";
+                                return next;
+                              })}
+                            >
+                              <option value="">Bitte auswählen</option>
+                              <option value="true">Ja</option>
+                              <option value="false">Nein</option>
+                            </select>
+                          )}
+                          {field.helpText && field.fieldType === "boolean" && (
+                            <p className="mt-1 text-[10px] text-slate-400">{field.helpText}</p>
+                          )}
+                        </div>
+                      ))}
+
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                          Bemerkung zu Bier- und Essensmarken und Fahnen
+                          Weitere Bemerkungen
                         </label>
                         <textarea
                           className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder-slate-400 focus:bg-white transition-all"
                           rows={3}
-                          placeholder="z.B. Wir benötigen 40 Biermarken, 25 Essensmarken + 1x Fahne"
+                          maxLength={2000}
+                          placeholder="Optionale zusätzliche Hinweise"
                           value={publicResClubNotes}
                           onChange={(e) => setPublicResClubNotes(e.target.value)}
                         />
@@ -4768,9 +5056,80 @@ export default function Page() {
                     </h3>
                   </div>
 
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                        <Filter className="w-4 h-4 text-blue-600" />
+                        <span>Checkliste filtern</span>
+                      </div>
+                      <span className="text-[10px] font-medium text-slate-500">
+                        {filteredChecklist.length} von {checklist.length}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <label htmlFor="checklist-status-filter" className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                          Status
+                        </label>
+                        <select
+                          id="checklist-status-filter"
+                          value={checklistStatusFilter}
+                          onChange={(event) => setChecklistStatusFilter(event.target.value as "all" | "open" | "completed")}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                        >
+                          <option value="all">Alle Aufgaben</option>
+                          <option value="open">Offen</option>
+                          <option value="completed">Erledigt</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="checklist-date-filter" className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                          Fällig am
+                        </label>
+                        <input
+                          id="checklist-date-filter"
+                          type="date"
+                          value={checklistDateFilter}
+                          onChange={(event) => setChecklistDateFilter(event.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="checklist-assignee-filter" className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                          Zuständig
+                        </label>
+                        <select
+                          id="checklist-assignee-filter"
+                          value={checklistAssigneeFilter}
+                          onChange={(event) => setChecklistAssigneeFilter(event.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                        >
+                          <option value="">Alle Personen</option>
+                          {checklistAssignees.map((assignee) => (
+                            <option key={assignee} value={assignee}>{assignee}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    {hasChecklistFilters && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChecklistStatusFilter("all");
+                          setChecklistDateFilter("");
+                          setChecklistAssigneeFilter("");
+                        }}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        Filter zurücksetzen
+                      </button>
+                    )}
+                  </div>
+
                   {/* Checklist Table */}
                   <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
-                    {checklist.map((item) => (
+                    {filteredChecklist.map((item) => (
                       <div 
                         key={item.id} 
                         className={`group flex items-center justify-between p-3 rounded-lg border transition-all ${
@@ -4820,6 +5179,14 @@ export default function Page() {
                         </button>
                       </div>
                     ))}
+                    {filteredChecklist.length === 0 && (
+                      <div className="py-8 px-4 text-center rounded-lg border border-dashed border-slate-200 bg-slate-50">
+                        <ClipboardList className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+                        <p className="text-xs font-semibold text-slate-600">
+                          {checklist.length === 0 ? "Noch keine Aufgaben vorhanden." : "Keine Aufgaben entsprechen den Filtern."}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Add Checklist task mini form */}
@@ -5691,6 +6058,123 @@ export default function Page() {
                   </div>
                 </div>
 
+                <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 sm:p-6">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Angaben für Vereinsreservierungen</h3>
+                      <p className="mt-1 text-xs font-medium text-slate-500">
+                        Lege fest, welche zusätzlichen Angaben Vereine bei einer Reservierung machen sollen.
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">
+                      {reservationFields.length}/20 Felder
+                    </span>
+                  </summary>
+                  <div className="border-t border-slate-100 p-5 sm:p-6 space-y-5">
+                    <form onSubmit={handleSaveReservationField} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                          {editingReservationFieldId ? "Feld bearbeiten" : "Neues Feld"}
+                        </h4>
+                        {editingReservationFieldId && (
+                          <button type="button" onClick={resetReservationFieldForm} className="text-xs font-semibold text-slate-500 hover:text-slate-800">
+                            Abbrechen
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <label className="space-y-1">
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Bezeichnung *</span>
+                          <input
+                            type="text"
+                            maxLength={100}
+                            value={newReservationFieldLabel}
+                            onChange={(event) => setNewReservationFieldLabel(event.target.value)}
+                            placeholder="z.B. Anzahl Weißwürste"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Feldart *</span>
+                          <select
+                            value={newReservationFieldType}
+                            onChange={(event) => setNewReservationFieldType(event.target.value as ReservationFieldType)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                          >
+                            <option value="number">Anzahl</option>
+                            <option value="boolean">Ja / Nein</option>
+                            <option value="text">Freitext</option>
+                          </select>
+                        </label>
+                      </div>
+                      <label className="space-y-1 block">
+                        <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Hilfetext</span>
+                        <input
+                          type="text"
+                          maxLength={200}
+                          value={newReservationFieldHelpText}
+                          onChange={(event) => setNewReservationFieldHelpText(event.target.value)}
+                          placeholder="Optionale Erklärung oder Beispielangabe"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                        />
+                      </label>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={newReservationFieldRequired}
+                            onChange={(event) => setNewReservationFieldRequired(event.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          Pflichtfeld
+                        </label>
+                        <button
+                          type="submit"
+                          className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 sm:w-auto"
+                        >
+                          {editingReservationFieldId ? "Änderungen speichern" : "Feld anlegen"}
+                        </button>
+                      </div>
+                    </form>
+
+                    <div className="space-y-2">
+                      {reservationFields.map((field, index) => (
+                        <div key={field.id} className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-bold text-slate-800">{field.label}</span>
+                              <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                {field.fieldType === "number" ? "Anzahl" : field.fieldType === "boolean" ? "Ja / Nein" : "Freitext"}
+                              </span>
+                              {field.required && <span className="text-[10px] font-bold text-rose-600">Pflichtfeld</span>}
+                            </div>
+                            {field.helpText && <p className="mt-1 text-[11px] text-slate-500">{field.helpText}</p>}
+                          </div>
+                          <div className="flex items-center gap-1 sm:shrink-0">
+                            <button type="button" disabled={index === 0} onClick={() => moveReservationField(field.id, -1)} title="Nach oben" className="rounded p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30">
+                              <ArrowUp className="h-4 w-4" />
+                            </button>
+                            <button type="button" disabled={index === reservationFields.length - 1} onClick={() => moveReservationField(field.id, 1)} title="Nach unten" className="rounded p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30">
+                              <ArrowDown className="h-4 w-4" />
+                            </button>
+                            <button type="button" onClick={() => handleEditReservationField(field)} title="Bearbeiten" className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600">
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button type="button" onClick={() => handleDeleteReservationField(field.id)} title="Löschen" className="ml-auto rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 sm:ml-0">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {reservationFields.length === 0 && (
+                        <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-xs font-medium text-slate-500">
+                          Noch keine individuellen Angaben konfiguriert.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </details>
+
                 {/* Seating Layout Overview */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                   
@@ -5702,15 +6186,26 @@ export default function Page() {
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 flex-wrap">
                         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Digital eingegangene Reservierungen</h3>
                         
-                        <button
-                          onClick={exportReservationsToPDF}
-                          type="button"
-                          className="inline-flex items-center space-x-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-bold text-[11px] px-3 py-1.5 rounded-lg shadow-xs transition-colors"
-                          title="Gesamte Reservierungstabelle als druckbereite PDF herunterladen"
-                        >
-                          <FileDown className="w-3.5 h-3.5 text-slate-500" />
-                          <span>PDF Export</span>
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={exportReservationsToXlsx}
+                            type="button"
+                            className="inline-flex items-center space-x-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-bold text-[11px] px-3 py-1.5 rounded-lg shadow-xs transition-colors"
+                            title="Reservierungstabelle als Excel-Datei herunterladen"
+                          >
+                            <FileDown className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Excel Export</span>
+                          </button>
+                          <button
+                            onClick={exportReservationsToPDF}
+                            type="button"
+                            className="inline-flex items-center space-x-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-bold text-[11px] px-3 py-1.5 rounded-lg shadow-xs transition-colors"
+                            title="Gesamte Reservierungstabelle als druckbereite PDF herunterladen"
+                          >
+                            <FileDown className="w-3.5 h-3.5 text-slate-500" />
+                            <span>PDF Export</span>
+                          </button>
+                        </div>
                       </div>
                       
                       <div className="space-y-3">
@@ -5752,9 +6247,18 @@ export default function Page() {
                               <span className="text-xs text-slate-500 font-medium block">
                                 E-Mail: {r.email || "-"} · Tel.: {r.phone || "-"} · {Math.max(1, r.tableCount ?? getReservationTableIds(r).length)} Tisch(e)
                               </span>
+                              {(r.clubReservationAnswers ?? []).length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  {(r.clubReservationAnswers ?? []).map((answer) => (
+                                    <span key={`${answer.fieldId}-${answer.label}`} className="rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-800">
+                                      <strong>{answer.label}:</strong> {formatReservationAnswerValue(answer)}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                               {r.clubReservationNotes && (
                                 <span className="text-xs text-slate-600 font-medium block rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1">
-                                  Bier-/Essensmarken: {r.clubReservationNotes}
+                                  Weitere Bemerkungen: {r.clubReservationNotes}
                                 </span>
                               )}
                             </div>
@@ -6147,17 +6651,84 @@ export default function Page() {
                           )}
 
                           {newResGuestType === "club" && (
-                            <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
-                                Vereinsname *
-                              </label>
-                              <input
-                                type="text"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none text-slate-700 placeholder-slate-400 focus:bg-white transition-all"
-                                value={newResClubName}
-                                onChange={(e) => setNewResClubName(e.target.value)}
-                              />
-                            </div>
+                            <>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
+                                  Vereinsname *
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none text-slate-700 placeholder-slate-400 focus:bg-white transition-all"
+                                  value={newResClubName}
+                                  onChange={(e) => setNewResClubName(e.target.value)}
+                                />
+                              </div>
+
+                              {reservationFields.map((field) => (
+                                <div key={field.id}>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
+                                    {field.label}{field.required ? " *" : ""}
+                                  </label>
+                                  {field.fieldType === "text" && (
+                                    <input
+                                      type="text"
+                                      maxLength={500}
+                                      required={field.required}
+                                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none text-slate-700 placeholder-slate-400 focus:bg-white transition-all"
+                                      placeholder={field.helpText}
+                                      value={String(newResFieldAnswers[field.id] ?? "")}
+                                      onChange={(event) => setNewResFieldAnswers((current) => ({ ...current, [field.id]: event.target.value }))}
+                                    />
+                                  )}
+                                  {field.fieldType === "number" && (
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      required={field.required}
+                                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none text-slate-700 placeholder-slate-400 focus:bg-white transition-all"
+                                      placeholder={field.helpText}
+                                      value={String(newResFieldAnswers[field.id] ?? "")}
+                                      onChange={(event) => setNewResFieldAnswers((current) => ({ ...current, [field.id]: event.target.value }))}
+                                    />
+                                  )}
+                                  {field.fieldType === "boolean" && (
+                                    <select
+                                      required={field.required}
+                                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none text-slate-700 focus:bg-white transition-all"
+                                      value={newResFieldAnswers[field.id] === undefined ? "" : newResFieldAnswers[field.id] === true ? "true" : "false"}
+                                      onChange={(event) => setNewResFieldAnswers((current) => {
+                                        const next = { ...current };
+                                        if (!event.target.value) delete next[field.id];
+                                        else next[field.id] = event.target.value === "true";
+                                        return next;
+                                      })}
+                                    >
+                                      <option value="">Bitte auswählen</option>
+                                      <option value="true">Ja</option>
+                                      <option value="false">Nein</option>
+                                    </select>
+                                  )}
+                                  {field.helpText && field.fieldType === "boolean" && (
+                                    <p className="mt-1 text-[10px] text-slate-400">{field.helpText}</p>
+                                  )}
+                                </div>
+                              ))}
+
+                              <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
+                                  Weitere Bemerkungen
+                                </label>
+                                <textarea
+                                  rows={3}
+                                  maxLength={2000}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none text-slate-700 placeholder-slate-400 focus:bg-white transition-all"
+                                  placeholder="Optionale zusätzliche Hinweise"
+                                  value={newResClubNotes}
+                                  onChange={(event) => setNewResClubNotes(event.target.value)}
+                                />
+                              </div>
+                            </>
                           )}
 
                           <div className="grid grid-cols-2 gap-2">

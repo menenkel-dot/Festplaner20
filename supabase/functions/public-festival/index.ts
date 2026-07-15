@@ -84,6 +84,7 @@ Deno.serve(async (req) => {
       programResult,
       shiftsResult,
       reservationsResult,
+      reservationFieldsResult,
     ] = await Promise.all([
       adminClient
         .from("festival_days")
@@ -105,9 +106,14 @@ Deno.serve(async (req) => {
         .select("id,table_id,table_ids,table_count,guests,date_label,time_label,status")
         .eq("festival_id", festival.id)
         .neq("status", "cancelled"),
+      adminClient
+        .from("festival_reservation_fields")
+        .select("id,label,field_type,help_text,required,sort_order")
+        .eq("festival_id", festival.id)
+        .order("sort_order", { ascending: true }),
     ]);
 
-    const failed = [daysResult, programResult, shiftsResult, reservationsResult].find((result) => result.error);
+    const failed = [daysResult, programResult, shiftsResult, reservationsResult, reservationFieldsResult].find((result) => result.error);
     if (failed?.error) throw failed.error;
 
     return new Response(JSON.stringify({
@@ -150,6 +156,14 @@ Deno.serve(async (req) => {
         helpers: Array.isArray(item.shift_helpers)
           ? item.shift_helpers.map((helper) => String(helper.helper_name))
           : [],
+      })),
+      reservationFields: (reservationFieldsResult.data ?? []).map((field) => ({
+        id: String(field.id),
+        label: String(field.label),
+        fieldType: field.field_type === "boolean" ? "boolean" : field.field_type === "number" ? "number" : "text",
+        helpText: field.help_text ? String(field.help_text) : undefined,
+        required: Boolean(field.required),
+        sortOrder: Number(field.sort_order),
       })),
       reservations: (reservationsResult.data ?? []).map((item) => ({
         id: String(item.id),

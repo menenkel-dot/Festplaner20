@@ -25,6 +25,64 @@ const parseTimeLabel = (value: string) => {
   return { hours: Number(match[1]), minutes: Number(match[2]) };
 };
 
+type ReservationFieldRow = {
+  id: string;
+  label: string;
+  field_type: "text" | "number" | "boolean";
+  required: boolean;
+};
+
+const validateReservationAnswers = (
+  fields: ReservationFieldRow[],
+  rawAnswers: unknown,
+) => {
+  if (!Array.isArray(rawAnswers) || rawAnswers.length > 20) {
+    return { error: "Die individuellen Vereinsangaben sind ungueltig.", answers: [] };
+  }
+
+  const configuredIds = new Set(fields.map((field) => field.id));
+  const answersById = new Map<string, unknown>();
+  for (const rawAnswer of rawAnswers) {
+    if (!rawAnswer || typeof rawAnswer !== "object") return { error: "Eine Vereinsangabe ist ungueltig.", answers: [] };
+    const fieldId = String((rawAnswer as Record<string, unknown>).fieldId ?? "");
+    if (!configuredIds.has(fieldId) || answersById.has(fieldId)) {
+      return { error: "Eine Vereinsangabe gehoert nicht zu diesem Fest.", answers: [] };
+    }
+    answersById.set(fieldId, (rawAnswer as Record<string, unknown>).value);
+  }
+
+  const answers: Array<Record<string, unknown>> = [];
+  for (const field of fields) {
+    const rawValue = answersById.get(field.id);
+    const missing = rawValue === undefined || rawValue === null || rawValue === "";
+    if (missing) {
+      if (field.required) return { error: `Bitte "${field.label}" ausfuellen.`, answers: [] };
+      continue;
+    }
+
+    let value: string | number | boolean;
+    if (field.field_type === "text") {
+      value = String(rawValue).trim();
+      if (!value || value.length > 500) return { error: `Die Angabe "${field.label}" ist ungueltig.`, answers: [] };
+    } else if (field.field_type === "number") {
+      value = Number(rawValue);
+      if (!Number.isInteger(value) || value < 0) return { error: `Die Angabe "${field.label}" muss eine nichtnegative ganze Zahl sein.`, answers: [] };
+    } else {
+      if (typeof rawValue !== "boolean") return { error: `Bitte "${field.label}" mit Ja oder Nein beantworten.`, answers: [] };
+      value = rawValue;
+    }
+
+    answers.push({
+      fieldId: field.id,
+      label: field.label,
+      fieldType: field.field_type,
+      value,
+    });
+  }
+
+  return { error: "", answers };
+};
+
 const zonedDateTimeToUtc = (isoDate: string, hours: number, minutes: number, timeZone: string) => {
   const [year, month, day] = isoDate.split("-").map(Number);
   const utcGuess = new Date(Date.UTC(year, month - 1, day, hours, minutes));
@@ -73,6 +131,7 @@ Deno.serve(async (req) => {
     const guestType = body.guestType === "club" ? "club" : "private";
     const clubName = String(body.clubName ?? "").trim();
     const clubReservationNotes = String(body.clubReservationNotes ?? "").trim();
+    const clubReservationAnswers = body.clubReservationAnswers;
     const dateLabel = String(body.date ?? "").trim();
     const timeLabel = String(body.time ?? "").trim();
 
@@ -85,6 +144,12 @@ Deno.serve(async (req) => {
 
     if (guestType === "club" && !clubName) {
       return new Response(JSON.stringify({ error: "Vereinsname fehlt." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (clubReservationNotes.length > 2000) {
+      return new Response(JSON.stringify({ error: "Weitere Bemerkungen duerfen maximal 2000 Zeichen enthalten." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -132,6 +197,23 @@ Deno.serve(async (req) => {
     if (!festival?.id) {
       return new Response(JSON.stringify({ error: "Kein aktives Fest gefunden." }), {
         status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: reservationFields, error: reservationFieldsError } = await adminClient
+      .from("festival_reservation_fields")
+      .select("id,label,field_type,required")
+      .eq("festival_id", festival.id)
+      .order("sort_order", { ascending: true });
+    if (reservationFieldsError) throw reservationFieldsError;
+
+    const validatedAnswers = guestType === "club"
+      ? validateReservationAnswers((reservationFields ?? []) as ReservationFieldRow[], clubReservationAnswers ?? [])
+      : { error: "", answers: [] };
+    if (validatedAnswers.error) {
+      return new Response(JSON.stringify({ error: validatedAnswers.error }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -256,6 +338,7 @@ Deno.serve(async (req) => {
         guest_type: guestType,
         club_name: guestType === "club" ? clubName : null,
         club_reservation_notes: guestType === "club" ? clubReservationNotes : null,
+        club_reservation_answers: guestType === "club" ? validatedAnswers.answers : [],
         guests: selectedTableIds.length * 10,
         date_label: dateLabel,
         time_label: timeLabel,
@@ -281,6 +364,8 @@ Deno.serve(async (req) => {
         date: dateLabel,
         time: timeLabel,
         tableCount: selectedTableIds.length,
+        clubReservationAnswers: validatedAnswers.answers,
+        clubReservationNotes,
       },
     }).catch((error) => console.error("Reservation notification failed", error)));
 

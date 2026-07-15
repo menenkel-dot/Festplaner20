@@ -69,10 +69,29 @@ export interface Reservation {
   guestType?: "private" | "club";
   clubName?: string;
   clubReservationNotes?: string;
+  clubReservationAnswers?: ReservationFieldAnswer[];
   guests: number;
   date: string;
   time: string;
   status: ReservationStatus;
+}
+
+export type ReservationFieldType = "text" | "number" | "boolean";
+
+export interface FestivalReservationField {
+  id: string;
+  label: string;
+  fieldType: ReservationFieldType;
+  helpText?: string;
+  required: boolean;
+  sortOrder: number;
+}
+
+export interface ReservationFieldAnswer {
+  fieldId: string;
+  label: string;
+  fieldType: ReservationFieldType;
+  value: string | number | boolean;
 }
 
 export interface FinancialItem {

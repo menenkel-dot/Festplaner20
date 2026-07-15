@@ -95,6 +95,23 @@ const getReservationDisplayName = (reservation: Record<string, unknown>) => {
   return getGuestName(reservation);
 };
 
+const getReservationNotes = (reservation: Record<string, unknown>) => {
+  const rawAnswers = reservation.club_reservation_answers ?? reservation.clubReservationAnswers;
+  const lines = Array.isArray(rawAnswers) ? rawAnswers.flatMap((answer) => {
+    if (!answer || typeof answer !== "object") return [];
+    const record = answer as Record<string, unknown>;
+    const label = clean(record.label);
+    if (!label) return [];
+    const value = clean(record.fieldType) === "boolean"
+      ? record.value === true ? "Ja" : "Nein"
+      : clean(record.value);
+    return [`${label}: ${value}`];
+  }) : [];
+  const notes = clean(reservation.club_reservation_notes ?? reservation.clubReservationNotes);
+  if (notes) lines.push(`Weitere Bemerkungen: ${notes}`);
+  return lines.join("\n");
+};
+
 const serializeSettings = (settings: Record<string, unknown>) => ({
   sender_name: clean(settings.sender_name),
   sender_email: clean(settings.sender_email),
@@ -226,7 +243,7 @@ Deno.serve(async (req) => {
       anzahl_tische: String(getTableCount(reservation)),
       telefon: clean(reservation.phone),
       email: clean(reservation.email),
-      notizen: clean(reservation.club_reservation_notes),
+      notizen: getReservationNotes(reservation),
     };
     const subject = renderTemplate(settings.subject_template, variables);
     const text = renderTemplate(settings.body_template, variables);

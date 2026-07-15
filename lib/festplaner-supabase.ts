@@ -3,6 +3,7 @@ import type {
   ChecklistItem,
   FinanceAccount,
   FestInfo,
+  FestivalReservationField,
   FinancialItem,
   InvitationContact,
   ProgramItem,
@@ -19,6 +20,7 @@ export interface FestPlanerSnapshot {
   invitations: InvitationContact[];
   shifts: Shift[];
   reservations: Reservation[];
+  reservationFields: FestivalReservationField[];
   financeAccounts: FinanceAccount[];
   finances: FinancialItem[];
   budget: number;
@@ -224,6 +226,8 @@ async function replaceFestivalChildren(
   festivalId: string,
   snapshot: FestPlanerSnapshot,
 ) {
+  await saveFestivalReservationFields(supabase, festivalId, snapshot.reservationFields ?? []);
+
   const { data: existingShifts, error: shiftsLookupError } = await supabase
     .from("shifts")
     .select("id")
@@ -367,6 +371,7 @@ async function replaceFestivalChildren(
         guest_type: item.guestType || "private",
         club_name: item.clubName || null,
         club_reservation_notes: item.clubReservationNotes || null,
+        club_reservation_answers: item.clubReservationAnswers ?? [],
         guests: item.guests,
         date_label: item.date,
         time_label: item.time,
@@ -409,6 +414,52 @@ async function replaceFestivalChildren(
       if (splitError) throw splitError;
     }
   }
+}
+
+async function saveFestivalReservationFields(
+  supabase: SupabaseClient,
+  festivalId: string,
+  fields: FestivalReservationField[],
+) {
+  const normalizedFields = fields.slice(0, 20).map((field, index) => ({
+    id: field.id,
+    festival_id: festivalId,
+    label: field.label.trim(),
+    field_type: field.fieldType,
+    help_text: field.helpText?.trim() || null,
+    required: field.required,
+    sort_order: index,
+  }));
+
+  if (normalizedFields.length > 0) {
+    const { data: existingFields, error: lookupError } = await supabase
+      .from("festival_reservation_fields")
+      .select("id")
+      .eq("festival_id", festivalId);
+    if (lookupError) throw lookupError;
+
+    const { error: upsertError } = await supabase
+      .from("festival_reservation_fields")
+      .upsert(normalizedFields, { onConflict: "id" });
+    if (upsertError) throw upsertError;
+
+    const retainedIds = new Set(normalizedFields.map((field) => field.id));
+    const staleIds = (existingFields ?? []).map((field) => String(field.id)).filter((id) => !retainedIds.has(id));
+    if (staleIds.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("festival_reservation_fields")
+        .delete()
+        .in("id", staleIds);
+      if (deleteError) throw deleteError;
+    }
+    return;
+  }
+
+  const { error } = await supabase
+    .from("festival_reservation_fields")
+    .delete()
+    .eq("festival_id", festivalId);
+  if (error) throw error;
 }
 
 async function saveFinanceAccountsToSupabase(
@@ -641,6 +692,7 @@ export async function loadClubFestivalFromSupabase(
     invitationsResult,
     shiftsResult,
     reservationsResult,
+    reservationFieldsResult,
     financesResult,
     financeAccountsResult,
   ] = await Promise.all([
@@ -672,9 +724,14 @@ export async function loadClubFestivalFromSupabase(
       .order("created_at", { ascending: true }),
     supabase
       .from("reservations")
-      .select("id,table_id,table_ids,table_count,name,first_name,last_name,email,phone,guest_type,club_name,club_reservation_notes,guests,date_label,time_label,status")
+      .select("id,table_id,table_ids,table_count,name,first_name,last_name,email,phone,guest_type,club_name,club_reservation_notes,club_reservation_answers,guests,date_label,time_label,status")
       .eq("festival_id", festival.id)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("festival_reservation_fields")
+      .select("id,label,field_type,help_text,required,sort_order")
+      .eq("festival_id", festival.id)
+      .order("sort_order", { ascending: true }),
     supabase
       .from("financial_items")
       .select("id,type,category,description,amount,status,attachment_name,attachment_data")
@@ -694,6 +751,7 @@ export async function loadClubFestivalFromSupabase(
     protocolsResult,
     shiftsResult,
     reservationsResult,
+    reservationFieldsResult,
     financesResult,
     financeAccountsResult,
   ];
@@ -806,10 +864,21 @@ export async function loadClubFestivalFromSupabase(
       guestType: item.guest_type === "club" ? "club" : "private",
       clubName: item.club_name ? String(item.club_name) : undefined,
       clubReservationNotes: item.club_reservation_notes ? String(item.club_reservation_notes) : undefined,
+      clubReservationAnswers: Array.isArray(item.club_reservation_answers)
+        ? item.club_reservation_answers as Reservation["clubReservationAnswers"]
+        : [],
       guests: Number(item.guests),
       date: String(item.date_label),
       time: String(item.time_label),
       status: mapReservationStatusToUi(String(item.status)),
+    })),
+    reservationFields: (reservationFieldsResult.data ?? []).map((field) => ({
+      id: String(field.id),
+      label: String(field.label),
+      fieldType: field.field_type === "boolean" ? "boolean" : field.field_type === "number" ? "number" : "text",
+      helpText: field.help_text ? String(field.help_text) : undefined,
+      required: Boolean(field.required),
+      sortOrder: Number(field.sort_order),
     })),
     financeAccounts: (financeAccountsResult.data ?? []).map((account) => ({
       id: String(account.id),
