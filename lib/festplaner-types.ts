@@ -19,6 +19,13 @@ export interface ChecklistItem {
   task: string;
   completed: boolean;
   assignedTo?: string;
+  categoryId?: string;
+}
+
+export interface ChecklistCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
 }
 
 export interface Protocol {

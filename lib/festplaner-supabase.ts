@@ -1,6 +1,7 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type {
   ChecklistItem,
+  ChecklistCategory,
   FinanceAccount,
   FestInfo,
   FestivalReservationField,
@@ -16,6 +17,7 @@ export interface FestPlanerSnapshot {
   festInfo: FestInfo;
   program: ProgramItem[];
   checklist: ChecklistItem[];
+  checklistCategories: ChecklistCategory[];
   protocols: Protocol[];
   invitations: InvitationContact[];
   shifts: Shift[];
@@ -245,6 +247,7 @@ async function replaceFestivalChildren(
     "festival_days",
     "program_items",
     "checklist_items",
+    "festival_checklist_categories",
     "protocols",
     "shifts",
     "reservations",
@@ -289,6 +292,18 @@ async function replaceFestivalChildren(
     if (error) throw error;
   }
 
+  if ((snapshot.checklistCategories ?? []).length > 0) {
+    const { error } = await supabase.from("festival_checklist_categories").insert(
+      snapshot.checklistCategories.map((category, index) => ({
+        id: category.id,
+        festival_id: festivalId,
+        name: category.name,
+        sort_order: index,
+      })),
+    );
+    if (error) throw error;
+  }
+
   if (snapshot.checklist.length > 0) {
     const { error } = await supabase.from("checklist_items").insert(
       snapshot.checklist.map((item) => ({
@@ -297,6 +312,7 @@ async function replaceFestivalChildren(
         task: item.task,
         completed: item.completed,
         assigned_to: item.assignedTo || null,
+        category_id: item.categoryId || null,
       })),
     );
     if (error) throw error;
@@ -690,6 +706,7 @@ export async function loadClubFestivalFromSupabase(
     daysResult,
     programResult,
     checklistResult,
+    checklistCategoriesResult,
     protocolsResult,
     invitationsResult,
     shiftsResult,
@@ -710,9 +727,14 @@ export async function loadClubFestivalFromSupabase(
       .order("sort_order", { ascending: true }),
     supabase
       .from("checklist_items")
-      .select("id,due_date,task,completed,assigned_to")
+      .select("id,due_date,task,completed,assigned_to,category_id")
       .eq("festival_id", festival.id)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("festival_checklist_categories")
+      .select("id,name,sort_order")
+      .eq("festival_id", festival.id)
+      .order("sort_order", { ascending: true }),
     supabase
       .from("protocols")
       .select("id,title,protocol_date,attendees,topics,decisions,attachment_name,attachment_data")
@@ -750,6 +772,7 @@ export async function loadClubFestivalFromSupabase(
     daysResult,
     programResult,
     checklistResult,
+    checklistCategoriesResult,
     protocolsResult,
     shiftsResult,
     reservationsResult,
@@ -816,6 +839,12 @@ export async function loadClubFestivalFromSupabase(
       task: String(item.task),
       completed: Boolean(item.completed),
       assignedTo: item.assigned_to ? String(item.assigned_to) : undefined,
+      categoryId: item.category_id ? String(item.category_id) : undefined,
+    })),
+    checklistCategories: (checklistCategoriesResult.data ?? []).map((category) => ({
+      id: String(category.id),
+      name: String(category.name),
+      sortOrder: Number(category.sort_order),
     })),
     protocols: (protocolsResult.data ?? []).map((item) => ({
       id: String(item.id),
