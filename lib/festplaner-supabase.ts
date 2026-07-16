@@ -331,6 +331,8 @@ async function replaceFestivalChildren(
         festival_id: festivalId,
         day_label: shift.day,
         time_label: shift.time,
+        start_time: shift.startTime || null,
+        end_time: shift.endTime || null,
         role: shift.role,
         needed: shift.needed,
         notes: shift.notes || null,
@@ -719,7 +721,7 @@ export async function loadClubFestivalFromSupabase(
     loadInvitationContactsFromSupabase(supabase, festival.id),
     supabase
       .from("shifts")
-      .select("id,day_label,time_label,role,needed,notes,shift_helpers(helper_name)")
+      .select("id,day_label,time_label,start_time,end_time,role,needed,notes,shift_helpers(helper_name)")
       .eq("festival_id", festival.id)
       .order("created_at", { ascending: true }),
     supabase
@@ -842,6 +844,8 @@ export async function loadClubFestivalFromSupabase(
       id: String(item.id),
       day: String(item.day_label),
       time: String(item.time_label),
+      startTime: item.start_time ? String(item.start_time).slice(0, 5) : undefined,
+      endTime: item.end_time ? String(item.end_time).slice(0, 5) : undefined,
       role: String(item.role),
       needed: Number(item.needed),
       helpers: Array.isArray(item.shift_helpers)

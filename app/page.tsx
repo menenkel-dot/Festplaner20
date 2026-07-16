@@ -77,6 +77,8 @@ interface Shift {
   id: string;
   day: string;
   time: string;
+  startTime?: string;
+  endTime?: string;
   role: string;
   needed: number;
   helpers: string[];
@@ -334,6 +336,58 @@ const normalizeStoredData = <T,>(value: T): T => {
     ) as T;
   }
   return value;
+};
+
+const normalizeShiftClock = (value?: string) => {
+  const match = String(value ?? "").match(/^([01]\d|2[0-3]):([0-5]\d)/);
+  return match ? `${match[1]}:${match[2]}` : "";
+};
+
+const parseLegacyShiftTime = (value: string) => {
+  const match = value.match(/((?:[01]?\d|2[0-3]):[0-5]\d)\s*(?:-|–|—|bis)\s*((?:[01]?\d|2[0-3]):[0-5]\d)/i);
+  if (!match) return null;
+  const normalize = (clock: string) => {
+    const [hours, minutes] = clock.split(":");
+    return `${hours.padStart(2, "0")}:${minutes}`;
+  };
+  const startTime = normalize(match[1]);
+  const endTime = normalize(match[2]);
+  return startTime === endTime ? null : { startTime, endTime };
+};
+
+const getShiftTimes = (shift: Shift) => {
+  const startTime = normalizeShiftClock(shift.startTime);
+  const endTime = normalizeShiftClock(shift.endTime);
+  if (startTime && endTime && startTime !== endTime) return { startTime, endTime };
+  return parseLegacyShiftTime(shift.time);
+};
+
+const formatShiftTime = (startTime: string, endTime: string) => `${startTime} – ${endTime} Uhr`;
+
+const getShiftDisplayTime = (shift: Shift) => {
+  const times = getShiftTimes(shift);
+  return times ? formatShiftTime(times.startTime, times.endTime) : shift.time;
+};
+
+const sortShifts = (items: Shift[], days: FestDay[]) => {
+  const dayOrder = new Map(days.map((day, index) => [day.name, index]));
+  return [...items].sort((left, right) => {
+    const leftDay = dayOrder.get(left.day) ?? Number.MAX_SAFE_INTEGER;
+    const rightDay = dayOrder.get(right.day) ?? Number.MAX_SAFE_INTEGER;
+    if (leftDay !== rightDay) return leftDay - rightDay;
+    if (left.day !== right.day) return left.day.localeCompare(right.day, "de");
+
+    const leftTimes = getShiftTimes(left);
+    const rightTimes = getShiftTimes(right);
+    if (Boolean(leftTimes) !== Boolean(rightTimes)) return leftTimes ? -1 : 1;
+    if (leftTimes && rightTimes) {
+      const startComparison = leftTimes.startTime.localeCompare(rightTimes.startTime);
+      if (startComparison !== 0) return startComparison;
+      const endComparison = leftTimes.endTime.localeCompare(rightTimes.endTime);
+      if (endComparison !== 0) return endComparison;
+    }
+    return left.role.localeCompare(right.role, "de");
+  });
 };
 
 const getErrorMessage = (error: unknown) => {
@@ -630,7 +684,8 @@ export default function Page() {
 
   // Shift Form
   const [newShiftDay, setNewShiftDay] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
-  const [newShiftTime, setNewShiftTime] = React.useState("");
+  const [newShiftStartTime, setNewShiftStartTime] = React.useState("");
+  const [newShiftEndTime, setNewShiftEndTime] = React.useState("");
   const [newShiftRole, setNewShiftRole] = React.useState("");
   const [newShiftNeeded, setNewShiftNeeded] = React.useState(3);
   const [newShiftNotes, setNewShiftNotes] = React.useState("");
@@ -2281,16 +2336,19 @@ export default function Page() {
   // Shifts (Schichten)
   const resetShiftForm = () => {
     setEditingShiftId(null);
-    setNewShiftTime("");
+    setNewShiftStartTime("");
+    setNewShiftEndTime("");
     setNewShiftRole("");
     setNewShiftNeeded(3);
     setNewShiftNotes("");
   };
 
   const handleEditShift = (shift: Shift) => {
+    const times = getShiftTimes(shift);
     setEditingShiftId(shift.id);
     setNewShiftDay(shift.day);
-    setNewShiftTime(shift.time);
+    setNewShiftStartTime(times?.startTime ?? "");
+    setNewShiftEndTime(times?.endTime ?? "");
     setNewShiftRole(shift.role);
     setNewShiftNeeded(shift.needed);
     setNewShiftNotes(shift.notes || "");
@@ -2304,17 +2362,24 @@ export default function Page() {
 
   const handleSaveShift = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newShiftTime || !newShiftRole) {
-      showToast("Bitte Arbeitszeit und Rolle ausfüllen.", "error");
+    if (!newShiftStartTime || !newShiftEndTime || !newShiftRole) {
+      showToast("Bitte Beginn, Ende und Rolle ausfüllen.", "error");
       return;
     }
+    if (newShiftStartTime === newShiftEndTime) {
+      showToast("Beginn und Ende der Schicht dürfen nicht identisch sein.", "error");
+      return;
+    }
+    const time = formatShiftTime(newShiftStartTime, newShiftEndTime);
     if (editingShiftId) {
       const updated = shifts.map((shift) => {
         if (shift.id !== editingShiftId) return shift;
         return {
           ...shift,
           day: newShiftDay,
-          time: newShiftTime,
+          time,
+          startTime: newShiftStartTime,
+          endTime: newShiftEndTime,
           role: newShiftRole,
           needed: Math.max(1, Number(newShiftNeeded) || 1),
           notes: newShiftNotes || undefined,
@@ -2331,7 +2396,9 @@ export default function Page() {
     const newItem: Shift = {
       id: "s_" + Date.now().toString(),
       day: newShiftDay,
-      time: newShiftTime,
+      time,
+      startTime: newShiftStartTime,
+      endTime: newShiftEndTime,
       role: newShiftRole,
       needed: Math.max(1, Number(newShiftNeeded) || 1),
       helpers: [],
@@ -2865,7 +2932,7 @@ export default function Page() {
     let y = 57;
     doc.setFontSize(9);
     
-    shifts.forEach((s) => {
+    sortedShifts.forEach((s) => {
       if (y > 265) {
         doc.addPage();
         y = 20;
@@ -2893,7 +2960,7 @@ export default function Page() {
       doc.text(`${s.day}`, 16, y);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(100, 116, 139);
-      doc.text(`${s.time}`, 16, y + 4);
+      doc.text(getShiftDisplayTime(s), 16, y + 4);
       
       // Print Tätigkeitsbereich / Rolle
       doc.setFont("helvetica", "bold");
@@ -3275,6 +3342,7 @@ export default function Page() {
   };
 
   // --- Derived Values / Statistics calculation ---
+  const sortedShifts = sortShifts(shifts, festInfo.daysConfig || []);
   const totalExpenses = finances.filter(f => f.type === "expense").reduce((sum, f) => sum + f.amount, 0);
   const totalRevenues = finances.filter(f => f.type === "revenue").reduce((sum, f) => sum + f.amount, 0);
   const netBalance = totalRevenues - totalExpenses;
@@ -3540,7 +3608,7 @@ export default function Page() {
                       >
                         Alle Tage
                       </button>
-                      {Array.from(new Set(shifts.map(s => s.day))).map((dayName) => (
+                      {Array.from(new Set(sortedShifts.map(s => s.day))).map((dayName) => (
                         <button
                           key={dayName}
                           type="button"
@@ -3569,7 +3637,7 @@ export default function Page() {
                         </div>
                       )}
                       {Object.entries(
-                        shifts
+                        sortedShifts
                           .filter(shift => shiftDayFilter === "Alle" || shift.day === shiftDayFilter)
                           .reduce((acc, shift) => {
                             if (!acc[shift.day]) acc[shift.day] = [];
@@ -3619,7 +3687,7 @@ export default function Page() {
                                   <div className="flex items-center space-x-4 mt-2 text-[11px] text-slate-500 font-medium">
                                     <span className="flex items-center space-x-1">
                                       <Clock className="w-3.5 h-3.5 text-blue-500" />
-                                      <span>{s.time}</span>
+                                      <span>{getShiftDisplayTime(s)}</span>
                                     </span>
                                     {s.notes && (
                                       <span className="text-slate-450 truncate max-w-[180px]">
@@ -3627,6 +3695,9 @@ export default function Page() {
                                       </span>
                                     )}
                                   </div>
+                                  {!getShiftTimes(s) && (
+                                    <p className="mt-2 text-[10px] font-bold text-amber-700">Zeit nachpflegen</p>
+                                  )}
 
                                   {s.helpers.length > 0 && (
                                     <div className="mt-2 pt-2 border-t border-slate-150 flex flex-wrap gap-1 items-center">
@@ -5741,7 +5812,7 @@ export default function Page() {
                         >
                           Alle Tage
                         </button>
-                        {Array.from(new Set(shifts.map(s => s.day))).map((dayName) => (
+                        {Array.from(new Set(sortedShifts.map(s => s.day))).map((dayName) => (
                           <button
                             key={dayName}
                             onClick={() => setShiftDayFilter(dayName)}
@@ -5757,7 +5828,7 @@ export default function Page() {
                       </div>
 
                       {Object.entries(
-                        shifts
+                        sortedShifts
                           .filter(shift => shiftDayFilter === "Alle" || shift.day === shiftDayFilter)
                           .reduce((acc, shift) => {
                             if (!acc[shift.day]) acc[shift.day] = [];
@@ -5781,7 +5852,7 @@ export default function Page() {
                                   <div className="flex justify-between items-start gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                                     <span className="text-blue-600 flex items-center space-x-1">
                                       <Clock className="w-3 h-3" />
-                                      <span>{s.time}</span>
+                                      <span>{getShiftDisplayTime(s)}</span>
                                     </span>
                                     <div className="flex shrink-0 items-center gap-1">
                                       <button
@@ -5804,6 +5875,10 @@ export default function Page() {
                                       </button>
                                     </div>
                                   </div>
+
+                                  {!getShiftTimes(s) && (
+                                    <p className="text-[10px] font-bold text-amber-700">Zeit nachpflegen</p>
+                                  )}
 
                                   <div>
                                     <strong className="text-slate-800 text-xs font-bold block leading-tight">{s.role}</strong>
@@ -5944,17 +6019,34 @@ export default function Page() {
                             </select>
                           </div>
 
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
-                              Uhrzeit-Spanne *
-                            </label>
-                            <input
-                              type="text"
-                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none text-slate-700 placeholder-slate-400 focus:bg-white transition-all"
-                              placeholder="z.B. 17:00 - 21:00 Uhr"
-                              value={newShiftTime}
-                              onChange={(e) => setNewShiftTime(e.target.value)}
-                            />
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
+                                Beginn *
+                              </label>
+                              <input
+                                type="time"
+                                required
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none text-slate-700 focus:bg-white transition-all"
+                                value={newShiftStartTime}
+                                onChange={(e) => setNewShiftStartTime(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">
+                                Ende *
+                              </label>
+                              <input
+                                type="time"
+                                required
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none text-slate-700 focus:bg-white transition-all"
+                                value={newShiftEndTime}
+                                onChange={(e) => setNewShiftEndTime(e.target.value)}
+                              />
+                            </div>
+                            <p className="sm:col-span-2 text-[10px] font-medium text-slate-400">
+                              Liegt das Ende vor dem Beginn, endet die Schicht am Folgetag.
+                            </p>
                           </div>
 
                           <div>

@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
         .order("sort_order", { ascending: true }),
       adminClient
         .from("shifts")
-        .select("id,day_label,time_label,role,needed,notes,shift_helpers(helper_name)")
+        .select("id,day_label,time_label,start_time,end_time,role,needed,notes,shift_helpers(helper_name)")
         .eq("festival_id", festival.id)
         .order("created_at", { ascending: true }),
       adminClient
@@ -150,6 +150,8 @@ Deno.serve(async (req) => {
         id: String(item.id),
         day: String(item.day_label),
         time: String(item.time_label),
+        startTime: item.start_time ? String(item.start_time).slice(0, 5) : undefined,
+        endTime: item.end_time ? String(item.end_time).slice(0, 5) : undefined,
         role: String(item.role),
         needed: Number(item.needed),
         notes: item.notes ? String(item.notes) : undefined,

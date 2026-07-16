@@ -50,6 +50,8 @@ export interface Shift {
   id: string;
   day: string;
   time: string;
+  startTime?: string;
+  endTime?: string;
   role: string;
   needed: number;
   helpers: string[];
