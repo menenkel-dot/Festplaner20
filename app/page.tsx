@@ -11,7 +11,7 @@ import {
   Square, FileText, ClipboardList, Euro, Check, X, Share2, 
   ExternalLink, Menu, TrendingDown, TrendingUp, HelpCircle,
   Copy, Armchair, Table2, ChevronRight, AlertCircle, Sparkles, Paperclip, FileDown,
-  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send, Bell, Upload, Filter, ArrowUp, ArrowDown
+  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send, Bell, Upload, Filter, ArrowUp, ArrowDown, QrCode
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import type { User } from "@supabase/supabase-js";
@@ -811,6 +811,14 @@ export default function Page() {
   const [activeClubId, setActiveClubId] = React.useState<string | null>(null);
   const [activeClubLogoUrl, setActiveClubLogoUrl] = React.useState("");
   const [publicLinks, setPublicLinks] = React.useState<PublicLink[]>([]);
+  const [qrCodeModal, setQrCodeModal] = React.useState<{
+    mode: "helfer" | "reservierung";
+    label: string;
+    url: string;
+    dataUrl: string;
+  } | null>(null);
+  const [qrCodeLoading, setQrCodeLoading] = React.useState(false);
+  const [qrCodeError, setQrCodeError] = React.useState("");
   const [publicLinkToken, setPublicLinkToken] = React.useState<string>("");
   const [publicLinkError, setPublicLinkError] = React.useState("");
   const [activeFestivalId, setActiveFestivalId] = React.useState<string | null>(null);
@@ -1757,6 +1765,83 @@ export default function Page() {
     const url = getShareableLink(mode);
     navigator.clipboard.writeText(url);
     showToast(`Teilnahmelink kopiert! (${mode === "helfer" ? "Helfer-Anmeldung" : "Tisch-Reservierung"})`, "success");
+  };
+
+  const hasActivePublicLink = (mode: "helfer" | "reservierung") => {
+    const type = mode === "helfer" ? "helper_signup" : "guest_reservation";
+    return publicLinks.some((link) => link.type === type && link.enabled);
+  };
+
+  const openQrCode = async (mode: "helfer" | "reservierung") => {
+    if (!hasActivePublicLink(mode)) {
+      showToast("Bitte zuerst einen aktiven öffentlichen Link generieren.", "error");
+      return;
+    }
+
+    const url = getShareableLink(mode);
+    const label = mode === "helfer" ? "Helferanmeldung" : "Tischreservierung";
+    setQrCodeError("");
+    setQrCodeLoading(true);
+    setQrCodeModal({ mode, label, url, dataUrl: "" });
+
+    try {
+      const QRCode = await import("qrcode");
+      const dataUrl = await QRCode.toDataURL(url, {
+        type: "image/png",
+        width: 1024,
+        margin: 4,
+        errorCorrectionLevel: "M",
+        color: {
+          dark: "#000000",
+          light: "#ffffff",
+        },
+      });
+      setQrCodeModal((current) => current?.url === url ? { ...current, dataUrl } : current);
+    } catch (error) {
+      console.error("QR code generation failed", error);
+      setQrCodeError("Der QR-Code konnte nicht erzeugt werden. Bitte versuche es erneut.");
+    } finally {
+      setQrCodeLoading(false);
+    }
+  };
+
+  const closeQrCode = () => {
+    setQrCodeModal(null);
+    setQrCodeError("");
+    setQrCodeLoading(false);
+  };
+
+  const downloadQrCode = () => {
+    if (!qrCodeModal?.dataUrl) return;
+    const safeFestName = (festInfo.name || "Fest").replace(/[\\/:*?"<>|]+/g, "_").trim() || "Fest";
+    const portalName = qrCodeModal.mode === "helfer" ? "Helferanmeldung" : "Tischreservierung";
+    const link = document.createElement("a");
+    link.href = qrCodeModal.dataUrl;
+    link.download = `QR-Code_${portalName}_${safeFestName}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    showToast("QR-Code als PNG heruntergeladen.", "success");
+  };
+
+  const copyQrCode = async () => {
+    if (!qrCodeModal?.dataUrl) return;
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+      showToast("Dieser Browser unterstützt das Kopieren von Bildern nicht. Bitte nutze den PNG-Download.", "error");
+      return;
+    }
+
+    try {
+      const response = await fetch(qrCodeModal.dataUrl);
+      const blob = await response.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": blob }),
+      ]);
+      showToast("QR-Code als Bild kopiert.", "success");
+    } catch (error) {
+      console.error("QR code clipboard copy failed", error);
+      showToast("Der QR-Code konnte nicht kopiert werden. Bitte nutze den PNG-Download.", "error");
+    }
   };
 
   const normalizeMailSettings = (settings: Partial<ClubMailSettingsForm> | null | undefined): ClubMailSettingsForm => ({
@@ -4743,6 +4828,112 @@ export default function Page() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {qrCodeModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="qr-code-modal-title"
+            onClick={closeQrCode}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") closeQrCode();
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.97, y: 8 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.97, y: 8 }}
+              className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl sm:p-6"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Öffentliches Portal</span>
+                  <h3 id="qr-code-modal-title" className="mt-1 text-lg font-bold text-slate-900">
+                    QR-Code für {qrCodeModal.label}
+                  </h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Der QR-Code führt direkt zum aktiven, vereinsgebundenen Link.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeQrCode}
+                  className="shrink-0 rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                  title="QR-Code schließen"
+                  aria-label="QR-Code schließen"
+                  autoFocus
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-5 flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white p-4">
+                {qrCodeLoading && (
+                  <div className="text-center">
+                    <QrCode className="mx-auto h-10 w-10 animate-pulse text-slate-300" />
+                    <p className="mt-3 text-xs font-semibold text-slate-500">QR-Code wird erstellt...</p>
+                  </div>
+                )}
+                {!qrCodeLoading && qrCodeError && (
+                  <div className="px-4 text-center">
+                    <AlertCircle className="mx-auto h-8 w-8 text-rose-500" />
+                    <p className="mt-3 text-xs font-semibold leading-relaxed text-rose-700">{qrCodeError}</p>
+                    <button
+                      type="button"
+                      onClick={() => openQrCode(qrCodeModal.mode)}
+                      className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-100"
+                    >
+                      Erneut versuchen
+                    </button>
+                  </div>
+                )}
+                {!qrCodeLoading && !qrCodeError && qrCodeModal.dataUrl && (
+                  <Image
+                    src={qrCodeModal.dataUrl}
+                    alt={`QR-Code für ${qrCodeModal.label}`}
+                    width={1024}
+                    height={1024}
+                    unoptimized
+                    className="h-full w-full object-contain"
+                  />
+                )}
+              </div>
+
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Ziel-Link</p>
+                <p className="mt-1 break-all text-[11px] font-medium leading-relaxed text-slate-700">{qrCodeModal.url}</p>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={copyQrCode}
+                  disabled={qrCodeLoading || !qrCodeModal.dataUrl}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500"
+                >
+                  <Copy className="h-4 w-4" />
+                  QR-Code kopieren
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadQrCode}
+                  disabled={qrCodeLoading || !qrCodeModal.dataUrl}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <FileDown className="h-4 w-4" />
+                  PNG herunterladen
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Sidebar layouts */}
       <div className="flex flex-1 relative">
         
@@ -6146,13 +6337,24 @@ export default function Page() {
                     </p>
                   </div>
                   
-                  <div className="flex space-x-2 shrink-0">
+                  <div className="flex shrink-0 flex-wrap gap-2">
                     <button
                       onClick={() => copyLink("helfer")}
                       className="bg-blue-600 hover:bg-blue-750 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors flex items-center space-x-1.5"
                     >
                       <Copy className="w-3.5 h-3.5" />
                       <span>Link Kopieren</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!hasActivePublicLink("helfer")}
+                      onClick={() => openQrCode("helfer")}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-100 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                      title={hasActivePublicLink("helfer") ? "QR-Code für den Helferlink anzeigen" : "Zuerst einen aktiven Helferlink generieren"}
+                    >
+                      <QrCode className="h-4 w-4" />
+                      <span>QR-Code</span>
                     </button>
                     
                     <button
@@ -6518,13 +6720,24 @@ export default function Page() {
                     </p>
                   </div>
                   
-                  <div className="flex space-x-2 shrink-0">
+                  <div className="flex shrink-0 flex-wrap gap-2">
                     <button
                       onClick={() => copyLink("reservierung")}
                       className="bg-emerald-600 hover:bg-emerald-750 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors flex items-center space-x-1.5"
                     >
                       <Copy className="w-3.5 h-3.5" />
                       <span>Link Kopieren</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!hasActivePublicLink("reservierung")}
+                      onClick={() => openQrCode("reservierung")}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                      title={hasActivePublicLink("reservierung") ? "QR-Code für den Reservierungslink anzeigen" : "Zuerst einen aktiven Reservierungslink generieren"}
+                    >
+                      <QrCode className="h-4 w-4" />
+                      <span>QR-Code</span>
                     </button>
                     
                     <button
@@ -7382,7 +7595,7 @@ export default function Page() {
                                 {link ? url : "Noch kein aktiver Link vorhanden. Generiere den Link, bevor du ihn teilst."}
                               </p>
                             </div>
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
                               <button
                                 type="button"
                                 disabled={!link}
@@ -7390,6 +7603,15 @@ export default function Page() {
                                 className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400"
                               >
                                 Kopieren
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!link}
+                                onClick={() => openQrCode(item.mode)}
+                                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:bg-blue-100 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                              >
+                                <QrCode className="h-3.5 w-3.5" />
+                                QR-Code
                               </button>
                               <button
                                 type="button"
