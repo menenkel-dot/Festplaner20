@@ -194,7 +194,7 @@ const DEFAULT_RESERVATION_TIMES = ["17:00 Uhr", "18:00 Uhr", "19:00 Uhr", "20:00
 const ADMIN_PERMISSIONS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "info", label: "Fest-Programm" },
-  { id: "meetings", label: "Sitzungsberichte" },
+  { id: "meetings", label: "Protokolle und Aufgaben" },
   { id: "invitations", label: "Einladungen" },
   { id: "shifts", label: "Helfer & Schichtplan" },
   { id: "reservations", label: "Reservierungen" },
@@ -4056,9 +4056,6 @@ export default function Page() {
                     const activeDay = (festInfo.daysConfig || []).find(d => d.name === publicResDate) || { tableCount: 16, gridCols: 4, reservationsEnabled: true };
                     const dayProgram = getProgramForDay(publicResDate);
                     const usesTentPlan = getReservationUsesTentPlan(publicResDate, publicResTime);
-                    const tableLimit = getReservationTableLimit(publicResDate, publicResTime);
-                    const reservedForSlot = getReservedTableCountForSlot(publicResDate, publicResTime);
-                    const freeForSlot = Math.max(0, tableLimit - reservedForSlot);
                     const slotOpen = publicResTime ? isReservationSlotOpen(publicResDate, publicResTime) : false;
                     
                     if (!activeDay.reservationsEnabled) {
@@ -4162,7 +4159,7 @@ export default function Page() {
                         ) : (
                           <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-4 text-center">
                             <p className="text-xs font-bold text-emerald-900">Für diesen Programmpunkt ist kein Zeltplan aktiv.</p>
-                            <p className="text-xs text-emerald-700 mt-1">{freeForSlot} von {tableLimit} Tisch(en) sind noch verfügbar.</p>
+                            <p className="text-xs text-emerald-700 mt-1">Bitte trage die gewünschte Anzahl an Tischen in den Buchungsdaten ein.</p>
                           </div>
                         )}
                       </div>
@@ -4195,14 +4192,12 @@ export default function Page() {
 
                 {(() => {
                   const usesTentPlan = getReservationUsesTentPlan(publicResDate, publicResTime);
-                  const tableLimit = getReservationTableLimit(publicResDate, publicResTime);
-                  const freeForSlot = Math.max(0, tableLimit - getReservedTableCountForSlot(publicResDate, publicResTime));
                   const selectedCount = usesTentPlan ? publicResSelectedTables.length : getNormalizedPublicTableCount();
 
                   return selectedCount > 0 && (!usesTentPlan || publicResSelectedTables.length > 0) ? (
                   <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center space-x-2 text-xs text-emerald-800 font-semibold">
                     <span className="p-1 bg-emerald-600 text-white rounded">✓</span>
-                    <span>{usesTentPlan ? (publicResSelectedTables.length === 1 ? `Tisch ${publicResSelectedTables[0]} wurde ausgewählt.` : `${publicResSelectedTables.length} Tische wurden ausgewählt.`) : `${selectedCount} Tisch(e) aus ${freeForSlot} freien Tisch(en) ausgewählt.`}</span>
+                    <span>{usesTentPlan ? (publicResSelectedTables.length === 1 ? `Tisch ${publicResSelectedTables[0]} wurde ausgewählt.` : `${publicResSelectedTables.length} Tische wurden ausgewählt.`) : (selectedCount === 1 ? "1 Tisch wurde ausgewählt." : `${selectedCount} Tische wurden ausgewählt.`)}</span>
                   </div>
                   ) : (
                   <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center space-x-2 text-xs text-amber-805 font-medium">
@@ -4709,7 +4704,7 @@ export default function Page() {
           >
             <span className="flex items-center space-x-3">
               <ClipboardList className="w-4 h-4 shrink-0" />
-              <span>Sitzungsberichte</span>
+              <span>Protokolle und Aufgaben</span>
             </span>
             <ChevronRight className="w-3.5 h-3.5 opacity-60" />
           </button>
