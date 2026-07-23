@@ -133,6 +133,7 @@ interface ReservationFieldAnswer {
 interface FinancialItem {
   id: string;
   type: 'expense' | 'revenue';
+  bookingDate: string;
   category: string;
   description: string;
   amount: number;
@@ -579,6 +580,16 @@ const formatOptionalDate = (value?: string) => {
   return date ? new Intl.DateTimeFormat("de-DE").format(date) : value;
 };
 
+const normalizeFinancialItem = (item: FinancialItem): FinancialItem => ({
+  ...item,
+  bookingDate: item.bookingDate || toIsoDate(new Date()),
+});
+
+const formatCurrency = (value: number) => new Intl.NumberFormat("de-DE", {
+  style: "currency",
+  currency: "EUR",
+}).format(value);
+
 const getInvitationStatusClasses = (status?: InvitationStatus) => {
   switch (normalizeInvitationStatus(status)) {
     case "Versendet":
@@ -733,6 +744,7 @@ export default function Page() {
 
   // Finances Form
   const [newFinType, setNewFinType] = React.useState<'expense' | 'revenue'>('expense');
+  const [newFinBookingDate, setNewFinBookingDate] = React.useState(() => toIsoDate(new Date()));
   const [newFinCat, setNewFinCat] = React.useState("");
   const [newFinDesc, setNewFinDesc] = React.useState("");
   const [newFinAmount, setNewFinAmount] = React.useState("");
@@ -749,6 +761,15 @@ export default function Page() {
   const [editingFinanceAccountId, setEditingFinanceAccountId] = React.useState<string | null>(null);
   const [dragActive, setDragActive] = React.useState(false);
   const [financePaymentConfirmId, setFinancePaymentConfirmId] = React.useState<string | null>(null);
+  const [financeSearch, setFinanceSearch] = React.useState("");
+  const [financeTypeFilter, setFinanceTypeFilter] = React.useState<"all" | FinancialItem["type"]>("all");
+  const [financeStatusFilter, setFinanceStatusFilter] = React.useState<"all" | FinancialItem["status"]>("all");
+  const [financeAccountFilter, setFinanceAccountFilter] = React.useState("all");
+  const [financeCategoryFilter, setFinanceCategoryFilter] = React.useState("all");
+  const [financeDateFrom, setFinanceDateFrom] = React.useState("");
+  const [financeDateTo, setFinanceDateTo] = React.useState("");
+  const [financeSort, setFinanceSort] = React.useState<"date_desc" | "date_asc" | "amount_desc" | "amount_asc" | "category_asc">("date_desc");
+  const [financeChartAccountId, setFinanceChartAccountId] = React.useState("all");
 
   // --- Public Helper Sign-Up Forms State ---
   const [publicSelectedShiftId, setPublicSelectedShiftId] = React.useState<string | null>(null);
@@ -905,7 +926,9 @@ export default function Page() {
       if (storedReservations) setReservations(normalizeStoredData(JSON.parse(storedReservations)));
       if (storedReservationFields) setReservationFields(normalizeStoredData(JSON.parse(storedReservationFields)));
       if (storedFinanceAccounts) setFinanceAccounts(normalizeStoredData(JSON.parse(storedFinanceAccounts)));
-      if (storedFinances) setFinances(normalizeStoredData(JSON.parse(storedFinances)));
+      if (storedFinances) {
+        setFinances((normalizeStoredData(JSON.parse(storedFinances)) as FinancialItem[]).map(normalizeFinancialItem));
+      }
       if (storedBudget && !Number.isNaN(Number(storedBudget))) setBudget(Number(storedBudget));
     }, 0);
 
@@ -1038,7 +1061,7 @@ export default function Page() {
     setReservations(snapshot.reservations);
     setReservationFields(snapshot.reservationFields ?? []);
     setFinanceAccounts(snapshot.financeAccounts ?? []);
-    setFinances(snapshot.finances);
+    setFinances(snapshot.finances.map(normalizeFinancialItem));
     setBudget(snapshot.budget);
 
     saveToStorage("vfp_fest_info", snapshot.festInfo);
@@ -1051,7 +1074,7 @@ export default function Page() {
     saveToStorage("vfp_reservations", snapshot.reservations);
     saveToStorage("vfp_reservation_fields", snapshot.reservationFields ?? []);
     saveToStorage("vfp_finance_accounts", snapshot.financeAccounts ?? []);
-    saveToStorage("vfp_finances", snapshot.finances);
+    saveToStorage("vfp_finances", snapshot.finances.map(normalizeFinancialItem));
     saveToStorage("vfp_budget", snapshot.budget);
     lastSyncedPayloadRef.current = JSON.stringify(snapshot);
     window.setTimeout(() => {
@@ -2850,8 +2873,8 @@ export default function Page() {
 
   const handleAddFinance = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFinCat || !newFinDesc || !newFinAmount) {
-      showToast("Bitte füllen Sie Kategorie, Beschreibung und Betrag aus.", "error");
+    if (!newFinBookingDate || !newFinCat || !newFinDesc || !newFinAmount) {
+      showToast("Bitte füllen Sie Buchungsdatum, Kategorie, Beschreibung und Betrag aus.", "error");
       return;
     }
     const financeAmount = Number(newFinAmount);
@@ -2883,6 +2906,7 @@ export default function Page() {
     const newItem: FinancialItem = {
       id: createClientId(),
       type: newFinType,
+      bookingDate: newFinBookingDate,
       category: newFinCat,
       description: newFinDesc,
       amount: financeAmount,
@@ -2897,6 +2921,7 @@ export default function Page() {
     setNewFinCat("");
     setNewFinDesc("");
     setNewFinAmount("");
+    setNewFinBookingDate(toIsoDate(new Date()));
     setNewFinAttachmentName("");
     setNewFinAttachmentData("");
     setNewFinAccountId("");
@@ -2939,6 +2964,7 @@ export default function Page() {
       [],
       [
         { value: "Typ", fontWeight: "bold" },
+        { value: "Buchungsdatum", fontWeight: "bold" },
         { value: "Kategorie", fontWeight: "bold" },
         { value: "Beschreibung", fontWeight: "bold" },
         { value: "Betrag EUR", fontWeight: "bold" },
@@ -2950,6 +2976,7 @@ export default function Page() {
       ],
       ...finances.map((item) => [
         { value: item.type === "expense" ? "Ausgabe" : "Einnahme" },
+        { value: item.bookingDate },
         { value: item.category },
         { value: item.description },
         { value: item.type === "expense" ? -item.amount : item.amount, format: "#,##0.00" },
@@ -2975,9 +3002,10 @@ export default function Page() {
       ["Erwartete Ausgaben", totalExpenses.toFixed(2)],
       ["Vorläufiger Gewinn", netBalance.toFixed(2)],
       [],
-      ["Typ", "Kategorie", "Beschreibung", "Betrag EUR", "Status", "Konto", "Split", "Split-Beträge", "Beleg"],
+      ["Typ", "Buchungsdatum", "Kategorie", "Beschreibung", "Betrag EUR", "Status", "Konto", "Split", "Split-Beträge", "Beleg"],
       ...finances.map((item) => [
         item.type === "expense" ? "Ausgabe" : "Einnahme",
+        item.bookingDate,
         item.category,
         item.description,
         (item.type === "expense" ? -item.amount : item.amount).toFixed(2),
@@ -3507,6 +3535,91 @@ export default function Page() {
   });
   const getFinanceAccountTotals = (accountId: string) =>
     financeAccountTotals.find((totals) => totals.accountId === accountId) ?? { accountId, revenues: 0, expenses: 0, balance: 0 };
+  const financeCategories = Array.from(new Set(finances.map((item) => item.category.trim()).filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right, "de"));
+  const getFinanceItemDate = (item: FinancialItem) => item.bookingDate || festInfo.startDate || toIsoDate(new Date());
+  const getFinanceAmountForAccount = (item: FinancialItem, accountId: string) =>
+    (item.accountSplits ?? [])
+      .filter((split) => split.accountId === accountId)
+      .reduce((sum, split) => sum + split.amount, 0);
+  const filteredFinances = finances
+    .filter((item) => {
+      const query = financeSearch.trim().toLocaleLowerCase("de");
+      const itemDate = getFinanceItemDate(item);
+      const matchesSearch = !query || [item.category, item.description, item.attachmentName ?? ""]
+        .some((value) => value.toLocaleLowerCase("de").includes(query));
+      const matchesType = financeTypeFilter === "all" || item.type === financeTypeFilter;
+      const matchesStatus = financeStatusFilter === "all" || item.status === financeStatusFilter;
+      const matchesCategory = financeCategoryFilter === "all" || item.category === financeCategoryFilter;
+      const matchesDate = (!financeDateFrom || itemDate >= financeDateFrom) && (!financeDateTo || itemDate <= financeDateTo);
+      const matchesAccount = financeAccountFilter === "all"
+        || (financeAccountFilter === "unassigned"
+          ? (item.accountSplits ?? []).length === 0
+          : getFinanceAmountForAccount(item, financeAccountFilter) > 0);
+      return matchesSearch && matchesType && matchesStatus && matchesCategory && matchesDate && matchesAccount;
+    })
+    .sort((left, right) => {
+      if (financeSort === "date_desc") return getFinanceItemDate(right).localeCompare(getFinanceItemDate(left));
+      if (financeSort === "date_asc") return getFinanceItemDate(left).localeCompare(getFinanceItemDate(right));
+      if (financeSort === "amount_desc") return right.amount - left.amount;
+      if (financeSort === "amount_asc") return left.amount - right.amount;
+      return left.category.localeCompare(right.category, "de") || left.description.localeCompare(right.description, "de");
+    });
+  const hasFinanceFilters = Boolean(financeSearch || financeDateFrom || financeDateTo)
+    || financeTypeFilter !== "all"
+    || financeStatusFilter !== "all"
+    || financeAccountFilter !== "all"
+    || financeCategoryFilter !== "all";
+  const filteredFinanceRevenue = filteredFinances
+    .filter((item) => item.type === "revenue")
+    .reduce((sum, item) => sum + item.amount, 0);
+  const filteredFinanceExpenses = filteredFinances
+    .filter((item) => item.type === "expense")
+    .reduce((sum, item) => sum + item.amount, 0);
+
+  const financeDailyTotals = new Map<string, { revenues: number; expenses: number }>();
+  finances.forEach((item) => {
+    const amount = financeChartAccountId === "all"
+      ? item.amount
+      : getFinanceAmountForAccount(item, financeChartAccountId);
+    if (amount <= 0) return;
+    const date = getFinanceItemDate(item);
+    const totals = financeDailyTotals.get(date) ?? { revenues: 0, expenses: 0 };
+    if (item.type === "revenue") totals.revenues += amount;
+    else totals.expenses += amount;
+    financeDailyTotals.set(date, totals);
+  });
+  const financeTimeline = Array.from(financeDailyTotals.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .reduce<Array<{ date: string; revenues: number; expenses: number; balance: number }>>((timeline, [date, totals]) => {
+      const previous = timeline[timeline.length - 1] ?? { revenues: 0, expenses: 0 };
+      const revenues = previous.revenues + totals.revenues;
+      const expenses = previous.expenses + totals.expenses;
+      return [...timeline, {
+        date,
+        revenues,
+        expenses,
+        balance: revenues - expenses,
+      }];
+    }, []);
+  const financeChartWidth = 900;
+  const financeChartHeight = 280;
+  const financeChartPadding = { top: 24, right: 24, bottom: 42, left: 76 };
+  const financeChartValues = financeTimeline.flatMap((point) => [point.revenues, point.expenses, point.balance, 0]);
+  const financeChartMin = financeChartValues.length > 0 ? Math.min(...financeChartValues) : 0;
+  const financeChartMax = financeChartValues.length > 0 ? Math.max(...financeChartValues) : 0;
+  const financeChartRange = Math.max(1, financeChartMax - financeChartMin);
+  const getFinanceChartX = (index: number) => financeTimeline.length <= 1
+    ? (financeChartPadding.left + financeChartWidth - financeChartPadding.right) / 2
+    : financeChartPadding.left + (index / (financeTimeline.length - 1)) * (financeChartWidth - financeChartPadding.left - financeChartPadding.right);
+  const getFinanceChartY = (value: number) =>
+    financeChartPadding.top + ((financeChartMax - value) / financeChartRange) * (financeChartHeight - financeChartPadding.top - financeChartPadding.bottom);
+  const getFinanceChartPoints = (key: "revenues" | "expenses" | "balance") =>
+    financeTimeline.map((point, index) => `${getFinanceChartX(index)},${getFinanceChartY(point[key])}`).join(" ");
+  const financeChartYTicks = Array.from({ length: 5 }, (_, index) => financeChartMax - (financeChartRange * index) / 4);
+  const financeChartXTickIndexes = financeTimeline.length <= 6
+    ? financeTimeline.map((_, index) => index)
+    : Array.from(new Set([0, 1, 2, 3, 4, 5].map((index) => Math.round(index * (financeTimeline.length - 1) / 5))));
   const checklistProgress = checklist.length > 0 
     ? Math.round((checklist.filter(c => c.completed).length / checklist.length) * 100) 
     : 0;
@@ -7896,7 +8009,7 @@ export default function Page() {
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
                     <div>
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">Erwartete Einnahmen</span>
-                      <strong className="text-xl font-bold text-emerald-600 block mt-1">{totalRevenues} €</strong>
+                      <strong className="text-xl font-bold text-emerald-600 block mt-1">{formatCurrency(totalRevenues)}</strong>
                     </div>
                     <div className="p-3 bg-white border border-slate-200 text-emerald-605 rounded-lg">
                       <TrendingUp className="w-5 h-5" />
@@ -7906,7 +8019,7 @@ export default function Page() {
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
                     <div>
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">Erwartete Ausgaben</span>
-                      <strong className="text-xl font-bold text-rose-600 block mt-1">{totalExpenses} €</strong>
+                      <strong className="text-xl font-bold text-rose-600 block mt-1">{formatCurrency(totalExpenses)}</strong>
                     </div>
                     <div className="p-3 bg-white border border-slate-200 text-rose-605 rounded-lg">
                       <TrendingDown className="w-5 h-5" />
@@ -7917,7 +8030,7 @@ export default function Page() {
                     <div>
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">Vorläufiger Gewinn</span>
                       <strong className={`text-xl font-bold block mt-1 ${netBalance >= 0 ? "text-blue-600" : "text-rose-600"}`}>
-                        {netBalance} €
+                        {formatCurrency(netBalance)}
                       </strong>
                     </div>
                     <div className={`p-3 rounded-lg bg-white border border-slate-200 ${netBalance >= 0 ? "text-blue-600" : "text-rose-600"}`}>
@@ -7926,6 +8039,114 @@ export default function Page() {
                   </div>
 
                 </div>
+
+                <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Monetäre Entwicklung</h3>
+                      <p className="mt-1 text-xs text-slate-500">Kumulierte Einnahmen, Ausgaben und Saldo nach Buchungsdatum.</p>
+                    </div>
+                    <label className="block w-full space-y-1 sm:w-56">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Darstellung</span>
+                      <select
+                        value={financeChartAccountId}
+                        onChange={(event) => setFinanceChartAccountId(event.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                      >
+                        <option value="all">Gesamtes Fest</option>
+                        {financeAccounts.map((account) => (
+                          <option key={account.id} value={account.id}>{account.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap gap-x-5 gap-y-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-5 bg-emerald-600" />Einnahmen</span>
+                    <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-5 bg-rose-600" />Ausgaben</span>
+                    <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-5 bg-blue-600" />Saldo</span>
+                  </div>
+
+                  {financeTimeline.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <svg
+                        viewBox={`0 0 ${financeChartWidth} ${financeChartHeight}`}
+                        className="min-w-[42rem] w-full"
+                        role="img"
+                        aria-label={`Finanzverlauf für ${financeChartAccountId === "all" ? "das gesamte Fest" : getFinanceAccountName(financeChartAccountId)}`}
+                      >
+                        {financeChartYTicks.map((tick) => (
+                          <g key={tick}>
+                            <line
+                              x1={financeChartPadding.left}
+                              x2={financeChartWidth - financeChartPadding.right}
+                              y1={getFinanceChartY(tick)}
+                              y2={getFinanceChartY(tick)}
+                              stroke="#e2e8f0"
+                              strokeWidth="1"
+                            />
+                            <text
+                              x={financeChartPadding.left - 10}
+                              y={getFinanceChartY(tick) + 4}
+                              textAnchor="end"
+                              className="fill-slate-400 text-[10px]"
+                            >
+                              {new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(tick)} €
+                            </text>
+                          </g>
+                        ))}
+                        <line
+                          x1={financeChartPadding.left}
+                          x2={financeChartWidth - financeChartPadding.right}
+                          y1={getFinanceChartY(0)}
+                          y2={getFinanceChartY(0)}
+                          stroke="#94a3b8"
+                          strokeWidth="1.5"
+                        />
+                        {financeChartXTickIndexes.map((index) => (
+                          <text
+                            key={financeTimeline[index].date}
+                            x={getFinanceChartX(index)}
+                            y={financeChartHeight - 12}
+                            textAnchor="middle"
+                            className="fill-slate-400 text-[10px]"
+                          >
+                            {formatOptionalDate(financeTimeline[index].date)}
+                          </text>
+                        ))}
+                        {financeTimeline.length > 1 && (
+                          <>
+                            <polyline points={getFinanceChartPoints("revenues")} fill="none" stroke="#059669" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+                            <polyline points={getFinanceChartPoints("expenses")} fill="none" stroke="#e11d48" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+                            <polyline points={getFinanceChartPoints("balance")} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+                          </>
+                        )}
+                        {financeTimeline.flatMap((point, index) => ([
+                          { key: "revenues", value: point.revenues, color: "#059669", label: "Einnahmen" },
+                          { key: "expenses", value: point.expenses, color: "#e11d48", label: "Ausgaben" },
+                          { key: "balance", value: point.balance, color: "#2563eb", label: "Saldo" },
+                        ].map((series) => (
+                          <circle
+                            key={`${point.date}-${series.key}`}
+                            cx={getFinanceChartX(index)}
+                            cy={getFinanceChartY(series.value)}
+                            r="4"
+                            fill={series.color}
+                            stroke="white"
+                            strokeWidth="2"
+                          >
+                            <title>{`${formatOptionalDate(point.date)} · ${series.label}: ${formatCurrency(series.value)}`}</title>
+                          </circle>
+                        ))))}
+                      </svg>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
+                      <BarChart3 className="mx-auto h-6 w-6 text-slate-300" />
+                      <p className="mt-2 text-xs font-semibold text-slate-600">Für diese Darstellung liegen noch keine Buchungen vor.</p>
+                    </div>
+                  )}
+                </section>
 
                 <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -8002,7 +8223,7 @@ export default function Page() {
                     {financeAccounts.map((account) => {
                       const totals = getFinanceAccountTotals(account.id);
                       return (
-                        <div key={account.id} className={`rounded-lg border p-4 ${account.isActive ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50 opacity-70"}`}>
+                        <div key={account.id} className={`rounded-lg border p-4 ${account.isActive ? (totals.balance >= 0 ? "border-emerald-200 bg-emerald-50/30" : "border-rose-200 bg-rose-50/30") : "border-slate-200 bg-slate-50 opacity-70"}`}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="truncate text-sm font-bold text-slate-900">{account.name}</p>
@@ -8014,18 +8235,20 @@ export default function Page() {
                             </span>
                           </div>
                           {account.description && <p className="mt-2 text-[11px] text-slate-500">{account.description}</p>}
-                          <div className="mt-3 grid grid-cols-3 gap-2 text-[10px]">
+                          <div className={`mt-3 rounded-lg border p-3 ${totals.balance >= 0 ? "border-emerald-100 bg-white" : "border-rose-100 bg-white"}`}>
+                            <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-400">Kontostand aus Festbuchungen</span>
+                            <strong className={`mt-1 block text-lg ${totals.balance >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                              {totals.balance > 0 ? "+" : ""}{formatCurrency(totals.balance)}
+                            </strong>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
                             <div>
                               <span className="block font-bold uppercase tracking-wider text-slate-400">Einnahmen</span>
-                              <strong className="text-emerald-700">{totals.revenues.toFixed(2)} €</strong>
+                              <strong className="text-emerald-700">+{formatCurrency(totals.revenues)}</strong>
                             </div>
                             <div>
                               <span className="block font-bold uppercase tracking-wider text-slate-400">Ausgaben</span>
-                              <strong className="text-rose-700">{totals.expenses.toFixed(2)} €</strong>
-                            </div>
-                            <div>
-                              <span className="block font-bold uppercase tracking-wider text-slate-400">Saldo</span>
-                              <strong className={totals.balance >= 0 ? "text-blue-700" : "text-rose-700"}>{totals.balance.toFixed(2)} €</strong>
+                              <strong className="text-rose-700">-{formatCurrency(totals.expenses)}</strong>
                             </div>
                           </div>
                           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -8066,8 +8289,13 @@ export default function Page() {
                   <div className="lg:col-span-8 bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
                     <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Positionen</h3>
-                        <p className="mt-1 text-[11px] text-slate-500">Exportiert Kennzahlen und alle Einnahmen sowie Ausgaben dieses Vereinsfestes.</p>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Positionen</h3>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500">
+                            {filteredFinances.length}/{finances.length}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-slate-500">Positionen durchsuchen, filtern und sortieren. Der Export enthält weiterhin alle Buchungen.</p>
                       </div>
                       <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
                         <button
@@ -8089,10 +8317,107 @@ export default function Page() {
                       </div>
                     </div>
 
-                    <div className="space-y-2.5 max-h-[450px] overflow-y-auto pr-1">
-                      {finances.map((f) => (
-                        <div key={f.id} className="flex justify-between items-center p-3.5 border border-slate-200 rounded-lg bg-slate-50/50 group hover:bg-slate-50 transition-colors">
-                          <div className="space-y-0.5">
+                    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                        <label className="space-y-1 sm:col-span-2">
+                          <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-500">Suche</span>
+                          <input
+                            type="search"
+                            value={financeSearch}
+                            onChange={(event) => setFinanceSearch(event.target.value)}
+                            placeholder="Kategorie, Beschreibung oder Beleg"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-500">Typ</span>
+                          <select value={financeTypeFilter} onChange={(event) => setFinanceTypeFilter(event.target.value as typeof financeTypeFilter)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600">
+                            <option value="all">Alle Typen</option>
+                            <option value="revenue">Einnahmen</option>
+                            <option value="expense">Ausgaben</option>
+                          </select>
+                        </label>
+                        <label className="space-y-1">
+                          <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-500">Status</span>
+                          <select value={financeStatusFilter} onChange={(event) => setFinanceStatusFilter(event.target.value as typeof financeStatusFilter)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600">
+                            <option value="all">Alle Status</option>
+                            <option value="Offen">Offen</option>
+                            <option value="Bezahlt">Bezahlt</option>
+                            <option value="Erhalten">Erhalten</option>
+                          </select>
+                        </label>
+                        <label className="space-y-1">
+                          <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-500">Konto</span>
+                          <select value={financeAccountFilter} onChange={(event) => setFinanceAccountFilter(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600">
+                            <option value="all">Alle Konten</option>
+                            <option value="unassigned">Nicht zugeordnet</option>
+                            {financeAccounts.map((account) => (
+                              <option key={account.id} value={account.id}>{account.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="space-y-1">
+                          <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-500">Kategorie</span>
+                          <select value={financeCategoryFilter} onChange={(event) => setFinanceCategoryFilter(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600">
+                            <option value="all">Alle Kategorien</option>
+                            {financeCategories.map((category) => (
+                              <option key={category} value={category}>{category}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="space-y-1">
+                          <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-500">Von</span>
+                          <input type="date" value={financeDateFrom} onChange={(event) => setFinanceDateFrom(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600" />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-500">Bis</span>
+                          <input type="date" value={financeDateTo} onChange={(event) => setFinanceDateTo(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600" />
+                        </label>
+                        <label className="space-y-1 sm:col-span-2">
+                          <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-500">Sortierung</span>
+                          <select value={financeSort} onChange={(event) => setFinanceSort(event.target.value as typeof financeSort)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600">
+                            <option value="date_desc">Datum: neueste zuerst</option>
+                            <option value="date_asc">Datum: älteste zuerst</option>
+                            <option value="amount_desc">Betrag: höchster zuerst</option>
+                            <option value="amount_asc">Betrag: niedrigster zuerst</option>
+                            <option value="category_asc">Kategorie: A bis Z</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="flex flex-col gap-2 border-t border-slate-200 pt-3 text-[10px] sm:flex-row sm:items-center sm:justify-between">
+                        <p className="font-semibold text-slate-600">
+                          Auswahl: <span className="text-emerald-700">+{formatCurrency(filteredFinanceRevenue)}</span>
+                          <span className="mx-1.5 text-slate-300">|</span>
+                          <span className="text-rose-700">-{formatCurrency(filteredFinanceExpenses)}</span>
+                          <span className="mx-1.5 text-slate-300">|</span>
+                          Saldo <span className={filteredFinanceRevenue - filteredFinanceExpenses >= 0 ? "text-blue-700" : "text-rose-700"}>{formatCurrency(filteredFinanceRevenue - filteredFinanceExpenses)}</span>
+                        </p>
+                        {hasFinanceFilters && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFinanceSearch("");
+                              setFinanceTypeFilter("all");
+                              setFinanceStatusFilter("all");
+                              setFinanceAccountFilter("all");
+                              setFinanceCategoryFilter("all");
+                              setFinanceDateFrom("");
+                              setFinanceDateTo("");
+                            }}
+                            className="inline-flex items-center justify-center gap-1 self-start rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-100 sm:self-auto"
+                          >
+                            <X className="h-3 w-3" />
+                            Filter zurücksetzen
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
+                      {filteredFinances.map((f) => (
+                        <div key={f.id} className="flex flex-col gap-3 p-3.5 border border-slate-200 rounded-lg bg-slate-50/50 group hover:bg-slate-50 transition-colors sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0 space-y-0.5">
                             <span className={`inline-block text-[9px] uppercase tracking-wide font-extrabold px-1.5 py-0.5 rounded mr-1.5 ${
                               f.type === "expense" ? "bg-rose-50 text-rose-700 border border-rose-200" : "bg-emerald-50 text-emerald-800 border border-emerald-200"
                             }`}>
@@ -8101,10 +8426,16 @@ export default function Page() {
                             <span className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">{f.category}</span>
                             <h4 className="text-xs font-bold text-slate-800 leading-tight">{f.description}</h4>
                             <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              <span className="text-[10px] font-semibold text-slate-500">{formatOptionalDate(getFinanceItemDate(f))}</span>
                               <span className="text-[10px] text-slate-400 font-medium mr-1">Status: {f.status}</span>
                               <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
                                 Konto: {getFinanceSplitLabel(f)}
                               </span>
+                              {financeAccountFilter !== "all" && financeAccountFilter !== "unassigned" && (
+                                <span className="rounded border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">
+                                  Anteil {getFinanceAccountName(financeAccountFilter)}: {formatCurrency(getFinanceAmountForAccount(f, financeAccountFilter))}
+                                </span>
+                              )}
                               {f.attachmentName && f.attachmentData ? (
                                 <a 
                                   href={f.attachmentData}
@@ -8119,9 +8450,9 @@ export default function Page() {
                             </div>
                           </div>
 
-                          <div className="flex items-center space-x-3 shrink-0">
+                          <div className="flex items-center justify-between gap-3 sm:justify-end sm:shrink-0">
                             <span className={`text-xs font-bold ${f.type === "expense" ? "text-rose-600" : "text-emerald-600"}`}>
-                              {f.type === "expense" ? "-" : "+"}{f.amount} €
+                              {f.type === "expense" ? "-" : "+"}{formatCurrency(f.amount)}
                             </span>
                             {f.type === "expense" && f.status === "Offen" && (
                               <button
@@ -8135,13 +8466,23 @@ export default function Page() {
                             )}
                             <button
                               onClick={() => handleDeleteFinance(f.id)}
-                              className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="text-slate-400 hover:text-red-500 p-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                              title="Position löschen"
+                              aria-label="Position löschen"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
                       ))}
+                      {filteredFinances.length === 0 && (
+                        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
+                          <Filter className="mx-auto h-6 w-6 text-slate-300" />
+                          <p className="mt-2 text-xs font-semibold text-slate-600">
+                            {finances.length === 0 ? "Noch keine Finanzpositionen vorhanden." : "Keine Position entspricht den gewählten Filtern."}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -8218,6 +8559,17 @@ export default function Page() {
                                   Einnahme
                                 </button>
                               </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Buchungsdatum *</label>
+                              <input
+                                type="date"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none text-slate-700 focus:bg-white transition-all"
+                                value={newFinBookingDate}
+                                onChange={(event) => setNewFinBookingDate(event.target.value)}
+                                required
+                              />
                             </div>
 
                             <div>

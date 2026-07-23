@@ -405,6 +405,7 @@ async function replaceFestivalChildren(
         ...(isUuid(item.id) ? { id: item.id } : {}),
         festival_id: festivalId,
         type: item.type,
+        booking_date: item.bookingDate || new Date().toISOString().slice(0, 10),
         category: item.category,
         description: item.description,
         amount: item.amount,
@@ -618,6 +619,7 @@ export async function saveFinancialItemsToSupabase(
       ...(isUuid(item.id) ? { id: item.id } : {}),
       festival_id: festivalId,
       type: item.type,
+      booking_date: item.bookingDate || new Date().toISOString().slice(0, 10),
       category: item.category,
       description: item.description,
       amount: item.amount,
@@ -758,8 +760,9 @@ export async function loadClubFestivalFromSupabase(
       .order("sort_order", { ascending: true }),
     supabase
       .from("financial_items")
-      .select("id,type,category,description,amount,status,attachment_name,attachment_data")
+      .select("id,type,booking_date,category,description,amount,status,attachment_name,attachment_data")
       .eq("festival_id", festival.id)
+      .order("booking_date", { ascending: true })
       .order("created_at", { ascending: true }),
     supabase
       .from("club_finance_accounts")
@@ -924,6 +927,7 @@ export async function loadClubFestivalFromSupabase(
     finances: (financesResult.data ?? []).map((item) => ({
       id: String(item.id),
       type: item.type === "revenue" ? "revenue" : "expense",
+      bookingDate: String(item.booking_date),
       category: String(item.category),
       description: String(item.description),
       amount: Number(item.amount),

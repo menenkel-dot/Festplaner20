@@ -106,6 +106,7 @@ export interface ReservationFieldAnswer {
 export interface FinancialItem {
   id: string;
   type: FinancialType;
+  bookingDate: string;
   category: string;
   description: string;
   amount: number;
