@@ -6424,17 +6424,24 @@ export default function Page() {
                   </div>
                 </div>
 
-                <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 sm:p-6">
-                    <div>
+                <details className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 sm:p-6">
+                    <div className="min-w-0">
                       <h3 className="text-sm font-bold text-slate-900">Angaben für Vereinsreservierungen</h3>
                       <p className="mt-1 text-xs font-medium text-slate-500">
                         Lege fest, welche zusätzlichen Angaben Vereine bei einer Reservierung machen sollen.
                       </p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">
-                      {reservationFields.length}/20 Felder
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">
+                        {reservationFields.length}/20 Felder
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold text-blue-700 transition-colors group-hover:bg-blue-100">
+                        <span className="group-open:hidden">Ausklappen</span>
+                        <span className="hidden group-open:inline">Einklappen</span>
+                        <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+                      </span>
+                    </div>
                   </summary>
                   <div className="border-t border-slate-100 p-5 sm:p-6 space-y-5">
                     <form onSubmit={handleSaveReservationField} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
