@@ -4667,75 +4667,179 @@ export default function Page() {
 
   if (!supabaseUser) {
     return (
-      <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-4 font-sans antialiased">
-        <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-6">
-          <div className="space-y-2 text-center">
-            <div className="mx-auto h-20 w-36">
-              <BrandLogo
-                src={brandLogoSrc}
-                alt="FestPlaner Logo"
-                width={288}
-                height={160}
-                className="h-full w-full object-contain"
-                priority
-              />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">FestPlaner Admin</h1>
-              <p className="text-xs text-slate-500 mt-1">
-                Bitte anmelden, um das Planungsdashboard zu öffnen.
-              </p>
-            </div>
-          </div>
+      <div className="festplaner-login-page relative min-h-[100svh] overflow-hidden bg-slate-950 font-sans text-white antialiased">
+        <Image
+          src="/login-festival.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-[42%_center] lg:object-center"
+        />
+        <div className="absolute inset-0 bg-slate-950/60 lg:bg-slate-950/50" />
 
-          {!supabase ? (
-            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-xs font-medium leading-normal">
-              Supabase ist nicht konfiguriert. Bitte `.env.local` mit den Supabase-Werten anlegen und den Dev-Server neu starten.
+        <div className="relative z-10 mx-auto flex min-h-[100svh] w-full max-w-[1440px] flex-col px-5 py-5 sm:px-8 sm:py-7 lg:px-12">
+          <header className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg bg-white shadow-lg shadow-slate-950/20">
+                <Image
+                  src="/app.png"
+                  alt=""
+                  width={48}
+                  height={48}
+                  className="h-full w-full object-contain"
+                  priority
+                />
+              </div>
+              <div>
+                <div className="text-xl font-bold leading-none tracking-normal">
+                  Fest<span className="text-cyan-300">Planer</span>
+                </div>
+                <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/65">
+                  Gemeinsam organisiert
+                </p>
+              </div>
             </div>
-          ) : (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleAuthSubmit("signin");
-              }}
-              className="space-y-3"
-            >
-              <input
-                type="email"
-                placeholder="E-Mail-Adresse"
-                value={authEmail}
-                onChange={(e) => setAuthEmail(e.target.value)}
-                autoComplete="email"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:ring-1 focus:ring-blue-600 focus:outline-none"
-              />
-              <input
-                type="password"
-                placeholder="Passwort"
-                value={authPassword}
-                onChange={(e) => setAuthPassword(e.target.value)}
-                autoComplete="current-password"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:ring-1 focus:ring-blue-600 focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={authLoading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 text-white font-bold py-3 rounded-lg transition-colors text-xs uppercase tracking-wider flex items-center justify-center space-x-2"
+
+            <div className="hidden items-center gap-2 rounded-full border border-white/20 bg-slate-950/25 px-3 py-2 text-xs font-semibold text-white/85 sm:flex">
+              <ShieldCheck className="h-4 w-4 text-cyan-300" />
+              Geschützter Vereinszugang
+            </div>
+          </header>
+
+          <main className="flex flex-1 items-center py-4 sm:py-10">
+            <div className="grid w-full items-center gap-5 sm:gap-7 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-16 xl:gap-24">
+              <section className="max-w-2xl">
+                <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-200/35 bg-slate-950/25 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-100">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Für Vereine gemacht
+                </div>
+                <h1 className="max-w-xl text-3xl font-bold leading-tight tracking-normal text-white sm:text-4xl lg:text-5xl">
+                  Feste gemeinsam besser organisieren.
+                </h1>
+                <p className="mt-4 max-w-xl text-sm leading-6 text-white/80 sm:text-base sm:leading-7">
+                  Von der ersten Aufgabe bis zum letzten Gast: FestPlaner bringt Programm,
+                  Helfer, Reservierungen und Finanzen in eine gemeinsame Arbeitsoberfläche.
+                </p>
+
+                <div className="mt-7 hidden grid-cols-3 gap-5 border-t border-white/20 pt-5 md:grid">
+                  {[
+                    { icon: Calendar, label: "Programm & Aufgaben" },
+                    { icon: Users, label: "Helfer & Schichten" },
+                    { icon: Table2, label: "Gäste & Finanzen" },
+                  ].map(({ icon: Icon, label }) => (
+                    <div key={label} className="flex items-center gap-3 text-sm font-semibold text-white/90">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-slate-950/25">
+                        <Icon className="h-4 w-4 text-cyan-300" />
+                      </span>
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section
+                aria-labelledby="login-title"
+                className="w-full rounded-lg border border-white/50 bg-white p-4 text-slate-900 shadow-2xl shadow-slate-950/35 sm:p-7"
               >
-                <LogIn className="w-4 h-4" />
-                <span>{authLoading ? "Anmelden..." : "Anmelden"}</span>
-              </button>
-            </form>
-          )}
+                <div className="mb-6">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-700">
+                    FestPlaner Admin
+                  </p>
+                  <h2 id="login-title" className="mt-2 text-2xl font-bold text-slate-950">
+                    Willkommen zurück
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    Melde dich an, um deinen Vereinsbereich zu öffnen.
+                  </p>
+                </div>
 
-          {authMessage && (
-            <p className="text-xs text-slate-500 leading-normal bg-slate-50 border border-slate-200 rounded-lg p-3">
-              {authMessage}
-            </p>
-          )}
+                {!supabase ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-medium leading-normal text-amber-800">
+                    Supabase ist nicht konfiguriert. Bitte `.env.local` mit den Supabase-Werten
+                    anlegen und den Dev-Server neu starten.
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleAuthSubmit("signin");
+                    }}
+                    className="space-y-4"
+                  >
+                    <div className="space-y-1.5">
+                      <label htmlFor="login-email" className="text-xs font-bold text-slate-700">
+                        E-Mail-Adresse
+                      </label>
+                      <div className="relative">
+                        <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          id="login-email"
+                          type="email"
+                          placeholder="name@verein.de"
+                          value={authEmail}
+                          onChange={(e) => setAuthEmail(e.target.value)}
+                          autoComplete="email"
+                          autoFocus
+                          required
+                          className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-600/15"
+                        />
+                      </div>
+                    </div>
 
-          <div className="pt-2 border-t border-slate-100 text-center text-[11px] text-slate-400 leading-normal">
-            Reservierung und Schichtpläne sind öffentlich erreichbar.
-          </div>
+                    <div className="space-y-1.5">
+                      <label htmlFor="login-password" className="text-xs font-bold text-slate-700">
+                        Passwort
+                      </label>
+                      <div className="relative">
+                        <ShieldCheck className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          id="login-password"
+                          type="password"
+                          placeholder="Dein Passwort"
+                          value={authPassword}
+                          onChange={(e) => setAuthPassword(e.target.value)}
+                          autoComplete="current-password"
+                          required
+                          minLength={6}
+                          className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-600/15"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                    >
+                      <LogIn className="h-4 w-4" />
+                      <span>{authLoading ? "Anmeldung läuft..." : "Jetzt anmelden"}</span>
+                    </button>
+                  </form>
+                )}
+
+                {authMessage && (
+                  <div
+                    role="status"
+                    className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-normal text-slate-600"
+                  >
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                    <p>{authMessage}</p>
+                  </div>
+                )}
+
+                <div className="mt-6 flex items-start gap-2 border-t border-slate-200 pt-4 text-[11px] leading-5 text-slate-500">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" />
+                  <p>Jeder Verein arbeitet in seinem eigenen geschützten Datenbereich.</p>
+                </div>
+              </section>
+            </div>
+          </main>
+
+          <footer className="hidden gap-1 text-[10px] font-medium text-white/60 sm:flex sm:flex-row sm:items-center sm:justify-between sm:text-[11px]">
+            <span>FestPlaner für Vereine und ihre Feste</span>
+            <span>Öffentliche Gäste- und Helferportale bleiben direkt erreichbar.</span>
+          </footer>
         </div>
       </div>
     );

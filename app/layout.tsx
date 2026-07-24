@@ -56,7 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body suppressHydrationWarning className="min-h-screen antialiased font-sans bg-slate-50 text-slate-900">
         <PwaRegister />
         {children}
-        <footer className="border-t border-slate-200/70 bg-white/70 px-4 py-4 text-center text-[10px] font-medium leading-relaxed text-slate-400">
+        <footer className="border-t border-slate-200/70 bg-white/70 px-4 py-4 text-center text-[10px] font-medium leading-relaxed text-slate-400 [body:has(>.festplaner-login-page)_&]:hidden">
           <span>©2026 </span>
           {creditUrl ? (
             <a
