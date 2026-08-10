@@ -4,7 +4,6 @@ import * as React from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AlertTriangle,
-  Archive,
   ArrowDownToLine,
   ArrowUpFromLine,
   History,
@@ -13,7 +12,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  RotateCcw,
   Scale,
   Search,
   Trash2,
@@ -24,7 +22,6 @@ import {
   loadInventoryDataFromSupabase,
   saveInventoryItemToSupabase,
   saveInventoryMovementToSupabase,
-  setInventoryItemActiveInSupabase,
 } from "@/lib/festplaner-inventory";
 import type {
   InventoryItem,
@@ -45,7 +42,7 @@ interface InventoryPanelProps {
   onToast: (message: string, type?: "success" | "info" | "error") => void;
 }
 
-type InventoryStatusFilter = "all" | "low" | "out" | "archived";
+type InventoryStatusFilter = "all" | "low" | "out";
 
 type SidePanel =
   | { kind: "item"; itemId?: string }
@@ -120,9 +117,6 @@ function getInventoryErrorMessage(error: unknown, fallback: string) {
 }
 
 function InventoryStatusBadge({ item, stock }: { item: InventoryItem; stock: number }) {
-  if (!item.isActive) {
-    return <span className="inline-flex shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">Archiviert</span>;
-  }
   if (stock <= 0) {
     return <span className="inline-flex shrink-0 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-rose-700">Nicht verfügbar</span>;
   }
@@ -253,13 +247,11 @@ export function InventoryPanel({
       const matchesSearch = !query || [item.name, item.category, item.unit, item.notes]
         .some((value) => value.toLocaleLowerCase("de").includes(query));
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
-      const matchesStatus = statusFilter === "archived"
-        ? !item.isActive
-        : item.isActive && (
-          statusFilter === "all"
-          || statusFilter === "out" && metrics.stock <= 0
-          || statusFilter === "low" && metrics.stock > 0 && metrics.stock <= item.minimumStock
-        );
+      const matchesStatus = item.isActive && (
+        statusFilter === "all"
+        || statusFilter === "out" && metrics.stock <= 0
+        || statusFilter === "low" && metrics.stock > 0 && metrics.stock <= item.minimumStock
+      );
       return matchesSearch && matchesCategory && matchesStatus;
     });
   }, [categoryFilter, deferredSearch, items, metricsByItem, statusFilter]);
@@ -270,7 +262,6 @@ export function InventoryPanel({
     const stock = metricsByItem.get(item.id)?.stock ?? 0;
     return stock > 0 && stock <= item.minimumStock;
   }).length;
-  const selectedMovementCount = movements.filter((movement) => movementMatchesDay(movement, selectedDayKey)).length;
   const panelItem = sidePanel && "itemId" in sidePanel
     ? items.find((item) => item.id === sidePanel.itemId)
     : undefined;
@@ -404,26 +395,6 @@ export function InventoryPanel({
     }
   };
 
-  const handleSetItemActive = async (item: InventoryItem, isActive: boolean) => {
-    if (!festivalId) return;
-    if (!isActive && !window.confirm(`Artikel „${item.name}“ archivieren?`)) return;
-
-    try {
-      const updatedItem = await setInventoryItemActiveInSupabase(supabase, festivalId, item.id, isActive);
-      setItems((current) => current.map((entry) => entry.id === item.id ? updatedItem : entry));
-      if (sidePanel && "itemId" in sidePanel && sidePanel.itemId === item.id) setSidePanel(null);
-      onToast(isActive ? "Artikel wieder aktiviert." : "Artikel archiviert.", "info");
-    } catch (error) {
-      console.error("Inventory item status update failed", error);
-      onToast(
-        getErrorCode(error) === "23505"
-          ? "Ein aktiver Artikel mit diesem Namen und dieser Einheit existiert bereits."
-          : getInventoryErrorMessage(error, "Artikelstatus konnte nicht geändert werden."),
-        "error",
-      );
-    }
-  };
-
   const handleSaveMovement = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!festivalId || sidePanel?.kind !== "movement") return;
@@ -530,7 +501,7 @@ export function InventoryPanel({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <button
           type="button"
           aria-pressed={statusFilter === "low"}
@@ -555,13 +526,6 @@ export function InventoryPanel({
           </div>
           <PackageX className="h-6 w-6 text-rose-600" />
         </button>
-        <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
-          <div>
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-blue-700">Bewegungen im Filter</span>
-            <strong className="mt-1 block text-2xl text-blue-900">{selectedMovementCount}</strong>
-          </div>
-          <History className="h-6 w-6 text-blue-600" />
-        </div>
       </div>
 
       {sidePanel && (
@@ -621,7 +585,6 @@ export function InventoryPanel({
                 <option value="all">Aktive Artikel</option>
                 <option value="low">Nachbestellen</option>
                 <option value="out">Nicht verfügbar</option>
-                <option value="archived">Archiviert</option>
               </select>
             </label>
           </div>
@@ -651,7 +614,7 @@ export function InventoryPanel({
                 {visibleItems.map((item) => {
                   const metrics = metricsByItem.get(item.id) ?? { stock: 0, receipts: 0, consumption: 0 };
                   return (
-                    <tr key={item.id} className={`align-top ${item.isActive ? "hover:bg-slate-50/70" : "bg-slate-50 opacity-70"}`}>
+                    <tr key={item.id} className="align-top hover:bg-slate-50/70">
                       <td className="py-3 pr-3">
                         <p className="font-bold text-slate-800">{item.name}</p>
                         <p className="mt-0.5 text-[10px] text-slate-500">{item.category || "Ohne Kategorie"} · {item.unit}</p>
@@ -665,17 +628,10 @@ export function InventoryPanel({
                       </td>
                       <td className="py-3 text-right">
                         <div className="inline-flex items-center gap-1">
-                          {item.isActive ? (
-                            <>
-                              <button type="button" onClick={() => openMovementForm(item, "receipt")} title="Lieferung buchen" aria-label={`${item.name}: Lieferung buchen`} className="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-50"><ArrowDownToLine className="h-4 w-4" /></button>
-                              <button type="button" onClick={() => openMovementForm(item, "consumption")} disabled={metrics.stock <= 0} title={metrics.stock <= 0 ? "Kein Bestand für einen Verbrauch vorhanden" : "Verbrauch buchen"} aria-label={`${item.name}: Verbrauch buchen`} className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"><ArrowUpFromLine className="h-4 w-4" /></button>
-                              <button type="button" onClick={() => openMovementForm(item, "count")} title="Bestand zählen" aria-label={`${item.name}: Bestand zählen`} className="rounded-md p-1.5 text-blue-600 hover:bg-blue-50"><Scale className="h-4 w-4" /></button>
-                              <button type="button" onClick={() => openEditItemForm(item)} title="Artikel bearbeiten" aria-label={`${item.name} bearbeiten`} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
-                              <button type="button" onClick={() => handleSetItemActive(item, false)} title="Artikel archivieren" aria-label={`${item.name} archivieren`} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><Archive className="h-4 w-4" /></button>
-                            </>
-                          ) : (
-                            <button type="button" onClick={() => handleSetItemActive(item, true)} title="Artikel wieder aktivieren" aria-label={`${item.name} wieder aktivieren`} className="rounded-md p-1.5 text-blue-600 hover:bg-blue-50"><RotateCcw className="h-4 w-4" /></button>
-                          )}
+                          <button type="button" onClick={() => openMovementForm(item, "receipt")} title="Lieferung buchen" aria-label={`${item.name}: Lieferung buchen`} className="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-50"><ArrowDownToLine className="h-4 w-4" /></button>
+                          <button type="button" onClick={() => openMovementForm(item, "consumption")} disabled={metrics.stock <= 0} title={metrics.stock <= 0 ? "Kein Bestand für einen Verbrauch vorhanden" : "Verbrauch buchen"} aria-label={`${item.name}: Verbrauch buchen`} className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"><ArrowUpFromLine className="h-4 w-4" /></button>
+                          <button type="button" onClick={() => openMovementForm(item, "count")} title="Bestand zählen" aria-label={`${item.name}: Bestand zählen`} className="rounded-md p-1.5 text-blue-600 hover:bg-blue-50"><Scale className="h-4 w-4" /></button>
+                          <button type="button" onClick={() => openEditItemForm(item)} title="Artikel bearbeiten" aria-label={`${item.name} bearbeiten`} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
                           <button type="button" onClick={() => setSidePanel({ kind: "history", itemId: item.id })} title="Verlauf anzeigen" aria-label={`${item.name}: Verlauf anzeigen`} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><History className="h-4 w-4" /></button>
                         </div>
                       </td>
@@ -690,7 +646,7 @@ export function InventoryPanel({
             {visibleItems.map((item) => {
               const metrics = metricsByItem.get(item.id) ?? { stock: 0, receipts: 0, consumption: 0 };
               return (
-                <article key={item.id} className={`rounded-lg border p-4 ${item.isActive ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50"}`}>
+                <article key={item.id} className="rounded-lg border border-slate-200 bg-white p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h4 className="truncate text-sm font-bold text-slate-900">{item.name}</h4>
@@ -714,38 +670,25 @@ export function InventoryPanel({
                     </div>
                   </div>
 
-                  {item.isActive ? (
-                    <div className="mt-4 grid grid-cols-3 gap-2">
-                      <button type="button" onClick={() => openMovementForm(item, "receipt")} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-bold text-emerald-800">
-                        <ArrowDownToLine className="h-3.5 w-3.5" /> Lieferung
-                      </button>
-                      <button type="button" onClick={() => openMovementForm(item, "consumption")} disabled={metrics.stock <= 0} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[10px] font-bold text-rose-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400">
-                        <ArrowUpFromLine className="h-3.5 w-3.5" /> Verbrauch
-                      </button>
-                      <button type="button" onClick={() => openMovementForm(item, "count")} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[10px] font-bold text-blue-800">
-                        <Scale className="h-3.5 w-3.5" /> Zählen
-                      </button>
-                    </div>
-                  ) : (
-                    <button type="button" onClick={() => handleSetItemActive(item, true)} className="mt-4 inline-flex w-full min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-bold uppercase tracking-wider text-blue-700">
-                      <RotateCcw className="h-3.5 w-3.5" /> Wieder aktivieren
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    <button type="button" onClick={() => openMovementForm(item, "receipt")} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-bold text-emerald-800">
+                      <ArrowDownToLine className="h-3.5 w-3.5" /> Lieferung
                     </button>
-                  )}
+                    <button type="button" onClick={() => openMovementForm(item, "consumption")} disabled={metrics.stock <= 0} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[10px] font-bold text-rose-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400">
+                      <ArrowUpFromLine className="h-3.5 w-3.5" /> Verbrauch
+                    </button>
+                    <button type="button" onClick={() => openMovementForm(item, "count")} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[10px] font-bold text-blue-800">
+                      <Scale className="h-3.5 w-3.5" /> Zählen
+                    </button>
+                  </div>
 
                   <div className="mt-3 flex items-center justify-end gap-1 border-t border-slate-100 pt-3">
                     <button type="button" onClick={() => setSidePanel({ kind: "history", itemId: item.id })} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100">
                       <History className="h-3.5 w-3.5" /> Verlauf
                     </button>
-                    {item.isActive && (
-                      <>
-                        <button type="button" onClick={() => openEditItemForm(item)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100">
-                          <Pencil className="h-3.5 w-3.5" /> Bearbeiten
-                        </button>
-                        <button type="button" onClick={() => handleSetItemActive(item, false)} aria-label={`${item.name} archivieren`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100">
-                          <Archive className="h-3.5 w-3.5" />
-                        </button>
-                      </>
-                    )}
+                    <button type="button" onClick={() => openEditItemForm(item)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100">
+                      <Pencil className="h-3.5 w-3.5" /> Bearbeiten
+                    </button>
                   </div>
                 </article>
               );
