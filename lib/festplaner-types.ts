@@ -53,6 +53,41 @@ export interface InvitationContact {
   responseNote?: string;
 }
 
+export interface ClubContact {
+  id: string;
+  functionTitle: string;
+  lastName: string;
+  firstName: string;
+  phone: string;
+  email: string;
+}
+
+export type InventoryMovementType = "count" | "receipt" | "consumption";
+
+export interface InventoryItem {
+  id: string;
+  festivalId: string;
+  name: string;
+  category: string;
+  unit: string;
+  minimumStock: number;
+  notes: string;
+  isActive: boolean;
+}
+
+export interface InventoryMovement {
+  id: string;
+  festivalId: string;
+  itemId: string;
+  dayDate?: string;
+  dayLabel: string;
+  type: InventoryMovementType;
+  quantity: number;
+  note?: string;
+  createdBy?: string;
+  createdAt: string;
+}
+
 export interface Shift {
   id: string;
   day: string;

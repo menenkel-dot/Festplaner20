@@ -2,6 +2,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type {
   ChecklistItem,
   ChecklistCategory,
+  ClubContact,
   FinanceAccount,
   FestInfo,
   FestivalReservationField,
@@ -12,6 +13,8 @@ import type {
   Reservation,
   Shift,
 } from "./festplaner-types";
+
+export type { ClubContact } from "./festplaner-types";
 
 export interface FestPlanerSnapshot {
   festInfo: FestInfo;
@@ -119,6 +122,69 @@ export async function loadPublicLinksFromSupabase(supabase: SupabaseClient, club
     token: String(link.token),
     enabled: Boolean(link.enabled),
   })) satisfies PublicLink[];
+}
+
+export async function loadClubContactsFromSupabase(supabase: SupabaseClient, clubId: string) {
+  const { data, error } = await supabase
+    .from("club_contacts")
+    .select("id,function_title,last_name,first_name,phone,email")
+    .eq("club_id", clubId)
+    .order("last_name", { ascending: true })
+    .order("first_name", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map((contact) => ({
+    id: String(contact.id),
+    functionTitle: String(contact.function_title ?? ""),
+    lastName: String(contact.last_name ?? ""),
+    firstName: String(contact.first_name ?? ""),
+    phone: String(contact.phone ?? ""),
+    email: String(contact.email ?? ""),
+  })) satisfies ClubContact[];
+}
+
+export async function saveClubContactToSupabase(
+  supabase: SupabaseClient,
+  clubId: string,
+  contact: ClubContact,
+) {
+  const { data, error } = await supabase
+    .from("club_contacts")
+    .upsert({
+      id: contact.id,
+      club_id: clubId,
+      function_title: contact.functionTitle,
+      last_name: contact.lastName,
+      first_name: contact.firstName,
+      phone: contact.phone,
+      email: contact.email,
+    }, { onConflict: "id" })
+    .select("id,function_title,last_name,first_name,phone,email")
+    .single();
+
+  if (error) throw error;
+  return {
+    id: String(data.id),
+    functionTitle: String(data.function_title ?? ""),
+    lastName: String(data.last_name ?? ""),
+    firstName: String(data.first_name ?? ""),
+    phone: String(data.phone ?? ""),
+    email: String(data.email ?? ""),
+  } satisfies ClubContact;
+}
+
+export async function deleteClubContactFromSupabase(
+  supabase: SupabaseClient,
+  clubId: string,
+  contactId: string,
+) {
+  const { error } = await supabase
+    .from("club_contacts")
+    .delete()
+    .eq("club_id", clubId)
+    .eq("id", contactId);
+
+  if (error) throw error;
 }
 
 function mapReservationStatus(status: string) {

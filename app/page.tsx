@@ -11,19 +11,24 @@ import {
   Square, FileText, ClipboardList, Euro, Check, X, Share2, 
   ExternalLink, Menu, TrendingDown, TrendingUp, HelpCircle,
   Copy, Armchair, Table2, ChevronRight, AlertCircle, Sparkles, Paperclip, FileDown,
-  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send, Bell, Upload, Filter, ArrowUp, ArrowDown, QrCode
+  LogIn, BarChart3, UserCog, ShieldCheck, Pencil, Mail, Send, Bell, Upload, Filter, ArrowUp, ArrowDown, QrCode, Phone, Package
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import type { User } from "@supabase/supabase-js";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { InventoryPanel } from "@/app/components/inventory-panel";
 import {
   type Club,
+  type ClubContact,
   type FestPlanerSnapshot,
   type PublicLink,
+  deleteClubContactFromSupabase,
+  loadClubContactsFromSupabase,
   loadClubFestivalFromSupabase,
   loadPublicLinksFromSupabase,
   loadUserClubsFromSupabase,
   saveActiveFestivalToSupabase,
+  saveClubContactToSupabase,
   saveFinancialItemsToSupabase,
 } from "@/lib/festplaner-supabase";
 
@@ -197,9 +202,11 @@ const ADMIN_PERMISSIONS = [
   { id: "info", label: "Fest-Programm" },
   { id: "meetings", label: "Protokolle und Aufgaben" },
   { id: "invitations", label: "Einladungen" },
+  { id: "contacts", label: "Kontakte" },
   { id: "shifts", label: "Helfer & Schichtplan" },
   { id: "reservations", label: "Reservierungen" },
   { id: "costs", label: "Finanzen & Kosten" },
+  { id: "inventory", label: "Warenwirtschaft" },
   { id: "users", label: "Einstellungen" },
 ];
 
@@ -627,7 +634,7 @@ const createEmptySnapshot = (): FestPlanerSnapshot => ({
 
 export default function Page() {
   // --- Global App States with Client-Side Hydration ---
-  type AdminTab = "dashboard" | "info" | "meetings" | "invitations" | "shifts" | "reservations" | "costs" | "users";
+  type AdminTab = "dashboard" | "info" | "meetings" | "invitations" | "contacts" | "shifts" | "reservations" | "costs" | "inventory" | "users";
   const [activeTab, setActiveTab] = React.useState<AdminTab>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [isMounted, setIsMounted] = React.useState(false);
@@ -639,6 +646,7 @@ export default function Page() {
   const [checklistCategories, setChecklistCategories] = React.useState<ChecklistCategory[]>([]);
   const [protocols, setProtocols] = React.useState<Protocol[]>(DEFAULT_PROTOCOLS);
   const [invitations, setInvitations] = React.useState<InvitationContact[]>(DEFAULT_INVITATIONS);
+  const [contacts, setContacts] = React.useState<ClubContact[]>([]);
   const [shifts, setShifts] = React.useState<Shift[]>(DEFAULT_SHIFTS);
   const [reservations, setReservations] = React.useState<Reservation[]>(DEFAULT_RESERVATIONS);
   const [reservationFields, setReservationFields] = React.useState<FestivalReservationField[]>([]);
@@ -656,6 +664,7 @@ export default function Page() {
   const [showCheckForm, setShowCheckForm] = React.useState(false);
   const [showProtoForm, setShowProtoForm] = React.useState(false);
   const [showInvitationForm, setShowInvitationForm] = React.useState(false);
+  const [showContactForm, setShowContactForm] = React.useState(false);
   const [showShiftForm, setShowShiftForm] = React.useState(false);
   const [showResForm, setShowResForm] = React.useState(false);
   const [showFinForm, setShowFinForm] = React.useState(false);
@@ -707,6 +716,17 @@ export default function Page() {
   const [newInvitationResponseNote, setNewInvitationResponseNote] = React.useState("");
   const [editingInvitationId, setEditingInvitationId] = React.useState<string | null>(null);
   const [invitationSearch, setInvitationSearch] = React.useState("");
+
+  // Club contacts form
+  const [newContactFunction, setNewContactFunction] = React.useState("");
+  const [newContactLastName, setNewContactLastName] = React.useState("");
+  const [newContactFirstName, setNewContactFirstName] = React.useState("");
+  const [newContactPhone, setNewContactPhone] = React.useState("");
+  const [newContactEmail, setNewContactEmail] = React.useState("");
+  const [editingContactId, setEditingContactId] = React.useState<string | null>(null);
+  const [contactSearch, setContactSearch] = React.useState("");
+  const [contactsLoading, setContactsLoading] = React.useState(false);
+  const [contactSaving, setContactSaving] = React.useState(false);
 
   // Shift Form
   const [newShiftDay, setNewShiftDay] = React.useState(DEFAULT_FEST_INFO.daysConfig[0]?.name ?? "");
@@ -1283,6 +1303,39 @@ export default function Page() {
     }, 0);
     return () => clearTimeout(timer);
   }, [activeClubId, loadUserAdminData, supabaseUserId]);
+
+  React.useEffect(() => {
+    if (!supabase || !supabaseUserId || !activeClubId || appMode !== "admin" || !currentPermissions.includes("contacts")) {
+      const timer = setTimeout(() => {
+        setContacts([]);
+        setContactsLoading(false);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+
+    let active = true;
+    const loadingTimer = setTimeout(() => {
+      if (active) setContactsLoading(true);
+    }, 0);
+
+    loadClubContactsFromSupabase(supabase, activeClubId)
+      .then((loadedContacts) => {
+        if (active) setContacts(loadedContacts);
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error("Club contacts load failed", error);
+        showToast("Kontakte konnten nicht geladen werden.", "error");
+      })
+      .finally(() => {
+        if (active) setContactsLoading(false);
+      });
+
+    return () => {
+      active = false;
+      clearTimeout(loadingTimer);
+    };
+  }, [activeClubId, appMode, currentPermissions, supabase, supabaseUserId]);
 
   React.useEffect(() => {
     if (!supabase || !activeClubId || !activeFestivalId || appMode !== "admin") return;
@@ -2456,6 +2509,94 @@ export default function Page() {
     saveToStorage("vfp_invitation_contacts", updated);
     if (editingInvitationId === id) handleCancelInvitationForm();
     showToast("Einladungskontakt gelöscht.", "info");
+  };
+
+  // Club contacts
+  const resetContactForm = () => {
+    setEditingContactId(null);
+    setNewContactFunction("");
+    setNewContactLastName("");
+    setNewContactFirstName("");
+    setNewContactPhone("");
+    setNewContactEmail("");
+  };
+
+  const handleEditContact = (contact: ClubContact) => {
+    setEditingContactId(contact.id);
+    setNewContactFunction(contact.functionTitle);
+    setNewContactLastName(contact.lastName);
+    setNewContactFirstName(contact.firstName);
+    setNewContactPhone(contact.phone);
+    setNewContactEmail(contact.email);
+    setShowContactForm(true);
+  };
+
+  const handleCancelContactForm = () => {
+    resetContactForm();
+    setShowContactForm(false);
+  };
+
+  const sortContacts = (items: ClubContact[]) => [...items].sort((left, right) =>
+    `${left.lastName} ${left.firstName}`.localeCompare(`${right.lastName} ${right.firstName}`, "de", { sensitivity: "base" }),
+  );
+
+  const handleSaveContact = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!supabase || !activeClubId) return;
+
+    const lastName = newContactLastName.trim();
+    const email = newContactEmail.trim();
+    if (!lastName) {
+      showToast("Bitte einen Namen eingeben.", "error");
+      return;
+    }
+    if (email && !isValidInvitationEmail(email)) {
+      showToast("Bitte eine gültige E-Mail-Adresse eingeben.", "error");
+      return;
+    }
+
+    const wasEditing = Boolean(editingContactId);
+    const contact: ClubContact = {
+      id: editingContactId ?? createClientId(),
+      functionTitle: newContactFunction.trim(),
+      lastName,
+      firstName: newContactFirstName.trim(),
+      phone: newContactPhone.trim(),
+      email,
+    };
+
+    setContactSaving(true);
+    try {
+      const savedContact = await saveClubContactToSupabase(supabase, activeClubId, contact);
+      setContacts((current) => sortContacts(
+        current.some((item) => item.id === savedContact.id)
+          ? current.map((item) => item.id === savedContact.id ? savedContact : item)
+          : [...current, savedContact],
+      ));
+      handleCancelContactForm();
+      showToast(wasEditing ? "Kontakt aktualisiert." : "Kontakt angelegt.", "success");
+    } catch (error) {
+      console.error("Club contact save failed", error);
+      showToast("Kontakt konnte nicht gespeichert werden.", "error");
+    } finally {
+      setContactSaving(false);
+    }
+  };
+
+  const handleDeleteContact = async (contact: ClubContact) => {
+    if (!supabase || !activeClubId) return;
+    const label = [contact.firstName, contact.lastName].filter(Boolean).join(" ");
+    if (!window.confirm(`Kontakt „${label}“ löschen?`)) return;
+
+    try {
+      await deleteClubContactFromSupabase(supabase, activeClubId, contact.id);
+      setContacts((current) => current.filter((item) => item.id !== contact.id));
+      if (editingContactId === contact.id) handleCancelContactForm();
+      showToast("Kontakt gelöscht.", "info");
+    } catch (error) {
+      console.error("Club contact delete failed", error);
+      showToast("Kontakt konnte nicht gelöscht werden.", "error");
+    }
   };
 
   const getInvitationCell = (row: Record<string, unknown>, aliases: string[]) => {
@@ -3752,6 +3893,17 @@ export default function Page() {
       contact.responseNote ?? "",
     ].some((value) => value.toLowerCase().includes(query)));
   }, [invitationSearch, invitations]);
+  const filteredContacts = React.useMemo(() => {
+    const query = contactSearch.trim().toLocaleLowerCase("de");
+    if (!query) return contacts;
+    return contacts.filter((contact) => [
+      contact.functionTitle,
+      contact.lastName,
+      contact.firstName,
+      contact.phone,
+      contact.email,
+    ].some((value) => value.toLocaleLowerCase("de").includes(query)));
+  }, [contactSearch, contacts]);
   const reservationEnabledDays = (festInfo.daysConfig || []).filter((day) => day.reservationsEnabled);
   const reservationEnabledDayNames = new Set(reservationEnabledDays.map((day) => day.name));
   const totalTables = reservationEnabledDays.reduce((sum, day) => sum + day.tableCount, 0);
@@ -5133,6 +5285,21 @@ export default function Page() {
           </button>
 
           <button
+            onClick={() => openTab("contacts")}
+            className={`${!hasPermission("contacts") ? "hidden" : "flex"} items-center justify-between px-3.5 py-2.5 rounded-lg font-semibold text-xs text-left transition-all ${
+              activeTab === "contacts"
+                ? "bg-blue-50 text-blue-700 font-bold"
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <span className="flex items-center space-x-3">
+              <Phone className="w-4 h-4 shrink-0" />
+              <span>Kontakte</span>
+            </span>
+            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+          </button>
+
+          <button
             onClick={() => openTab("shifts")}
             className={`${!hasPermission("shifts") ? "hidden" : "flex"} items-center justify-between px-3.5 py-2.5 rounded-lg font-semibold text-xs text-left transition-all ${
               activeTab === "shifts" 
@@ -5173,6 +5340,21 @@ export default function Page() {
             <span className="flex items-center space-x-3">
               <Euro className="w-4 h-4 shrink-0" />
               <span>Finanzen & Kosten</span>
+            </span>
+            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+          </button>
+
+          <button
+            onClick={() => openTab("inventory")}
+            className={`${!hasPermission("inventory") ? "hidden" : "flex"} items-center justify-between px-3.5 py-2.5 rounded-lg font-semibold text-xs text-left transition-all ${
+              activeTab === "inventory"
+                ? "bg-blue-50 text-blue-700 font-bold"
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <span className="flex items-center space-x-3">
+              <Package className="w-4 h-4 shrink-0" />
+              <span>Warenwirtschaft</span>
             </span>
             <ChevronRight className="w-3.5 h-3.5 opacity-60" />
           </button>
@@ -6411,6 +6593,215 @@ export default function Page() {
                           className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold uppercase text-white transition-colors hover:bg-slate-800"
                         >
                           {editingInvitationId ? "Kontakt speichern" : "Kontakt anlegen"}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+            {/* KONTAKTE */}
+            {activeTab === "contacts" && (
+              <motion.div
+                key="contacts-tab"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="grid grid-cols-1 gap-6 lg:grid-cols-12"
+              >
+                <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-8">
+                  <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <Phone className="h-4 w-4 text-blue-600" />
+                        <span>Kontakte ({contacts.length})</span>
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-500">Ansprechpartner, die der Verein für die Festplanung benötigt.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetContactForm();
+                        setShowContactForm(true);
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-slate-800 lg:hidden"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Kontakt hinzufügen
+                    </button>
+                  </div>
+
+                  <input
+                    type="search"
+                    value={contactSearch}
+                    onChange={(event) => setContactSearch(event.target.value)}
+                    placeholder="Kontakte durchsuchen"
+                    aria-label="Kontakte durchsuchen"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                  />
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[760px] text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          <th className="py-2 pr-3">Funktion</th>
+                          <th className="py-2 pr-3">Name</th>
+                          <th className="py-2 pr-3">Vorname</th>
+                          <th className="py-2 pr-3">Telefonnummer</th>
+                          <th className="py-2 pr-3">E-Mail-Adresse</th>
+                          <th className="py-2 text-right">Aktion</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredContacts.map((contact) => (
+                          <tr key={contact.id} className="group hover:bg-slate-50/70">
+                            <td className="max-w-[180px] py-3 pr-3 font-semibold text-slate-800">{contact.functionTitle || "–"}</td>
+                            <td className="py-3 pr-3 font-semibold text-slate-700">{contact.lastName}</td>
+                            <td className="py-3 pr-3 text-slate-600">{contact.firstName || "–"}</td>
+                            <td className="py-3 pr-3 text-slate-600">
+                              {contact.phone ? <a href={`tel:${contact.phone}`} className="hover:text-blue-700 hover:underline">{contact.phone}</a> : "–"}
+                            </td>
+                            <td className="max-w-[210px] truncate py-3 pr-3 text-slate-600">
+                              {contact.email ? <a href={`mailto:${contact.email}`} className="hover:text-blue-700 hover:underline">{contact.email}</a> : "–"}
+                            </td>
+                            <td className="py-3 text-right">
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditContact(contact)}
+                                  className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-blue-600"
+                                  title="Kontakt bearbeiten"
+                                  aria-label={`${contact.firstName} ${contact.lastName} bearbeiten`}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteContact(contact)}
+                                  className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-red-500"
+                                  title="Kontakt löschen"
+                                  aria-label={`${contact.firstName} ${contact.lastName} löschen`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {(contactsLoading || filteredContacts.length === 0) && (
+                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-xs font-semibold text-slate-500">
+                      {contactsLoading
+                        ? "Kontakte werden geladen ..."
+                        : contacts.length === 0
+                          ? "Noch keine Kontakte vorhanden."
+                          : "Keine Kontakte zur Suche gefunden."}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-4">
+                  {!showContactForm ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetContactForm();
+                        setShowContactForm(true);
+                      }}
+                      className="flex min-h-[190px] w-full flex-col items-center justify-center space-y-2 rounded-xl border-2 border-dashed border-slate-200 text-slate-500 transition-all hover:border-slate-400 hover:bg-slate-50/50 hover:text-slate-700"
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+                        <Plus className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <span className="text-xs font-bold uppercase tracking-wider">Kontakt hinzufügen</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                          {editingContactId ? "Kontakt bearbeiten" : "Kontakt hinzufügen"}
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={handleCancelContactForm}
+                          className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                          aria-label="Formular schließen"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleSaveContact} className="space-y-3">
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Funktion</span>
+                          <input
+                            type="text"
+                            value={newContactFunction}
+                            onChange={(event) => setNewContactFunction(event.target.value)}
+                            maxLength={120}
+                            placeholder="z. B. Feuerwehrkommandant"
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          />
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Name *</span>
+                            <input
+                              type="text"
+                              value={newContactLastName}
+                              onChange={(event) => setNewContactLastName(event.target.value)}
+                              maxLength={120}
+                              required
+                              autoComplete="family-name"
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            />
+                          </label>
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Vorname</span>
+                            <input
+                              type="text"
+                              value={newContactFirstName}
+                              onChange={(event) => setNewContactFirstName(event.target.value)}
+                              maxLength={120}
+                              autoComplete="given-name"
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            />
+                          </label>
+                        </div>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Telefonnummer</span>
+                          <input
+                            type="tel"
+                            value={newContactPhone}
+                            onChange={(event) => setNewContactPhone(event.target.value)}
+                            maxLength={80}
+                            autoComplete="tel"
+                            placeholder="+49 123 456789"
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">E-Mail-Adresse</span>
+                          <input
+                            type="email"
+                            value={newContactEmail}
+                            onChange={(event) => setNewContactEmail(event.target.value)}
+                            maxLength={320}
+                            autoComplete="email"
+                            placeholder="kontakt@beispiel.de"
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          disabled={contactSaving || !newContactLastName.trim()}
+                          className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold uppercase text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        >
+                          {contactSaving ? "Wird gespeichert ..." : editingContactId ? "Kontakt speichern" : "Kontakt anlegen"}
                         </button>
                       </form>
                     </div>
@@ -8317,6 +8708,29 @@ export default function Page() {
                     </div>
                   </div>
                 </details>
+              </motion.div>
+            )}
+
+            {activeTab === "inventory" && supabase && (
+              <motion.div
+                key="inventory-tab"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+              >
+                <InventoryPanel
+                  supabase={supabase}
+                  festivalId={activeFestivalId}
+                  festDays={(festInfo.daysConfig || []).map((day) => {
+                    const date = getFestDayDate(day.name);
+                    return {
+                      label: day.name,
+                      date: date ? toIsoDate(date) : undefined,
+                    };
+                  })}
+                  userId={supabaseUser.id}
+                  onToast={showToast}
+                />
               </motion.div>
             )}
 
