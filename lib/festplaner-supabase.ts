@@ -213,6 +213,28 @@ function mapFinancialStatusToUi(status: string) {
   return "Offen";
 }
 
+function normalizeFinancePositionNumbers(items: FinancialItem[]) {
+  const validPositions = items
+    .map((item) => Number(item.positionNumber))
+    .filter((position) => Number.isInteger(position) && position > 0);
+  const usedPositions = new Set<number>();
+  let nextPosition = Math.max(0, ...validPositions) + 1;
+
+  return items.map((item) => {
+    const requestedPosition = Number(item.positionNumber);
+    if (Number.isInteger(requestedPosition) && requestedPosition > 0 && !usedPositions.has(requestedPosition)) {
+      usedPositions.add(requestedPosition);
+      return { ...item, positionNumber: requestedPosition };
+    }
+
+    while (usedPositions.has(nextPosition)) nextPosition += 1;
+    const positionNumber = nextPosition;
+    usedPositions.add(positionNumber);
+    nextPosition += 1;
+    return { ...item, positionNumber };
+  });
+}
+
 function isInvitationSchemaError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const candidate = error as { code?: unknown; message?: unknown };
@@ -295,6 +317,7 @@ async function replaceFestivalChildren(
   snapshot: FestPlanerSnapshot,
 ) {
   await saveFestivalReservationFields(supabase, festivalId, snapshot.reservationFields ?? []);
+  const financialItems = normalizeFinancePositionNumbers(snapshot.finances);
 
   const { data: existingShifts, error: shiftsLookupError } = await supabase
     .from("shifts")
@@ -465,11 +488,12 @@ async function replaceFestivalChildren(
     if (error) throw error;
   }
 
-  if (snapshot.finances.length > 0) {
+  if (financialItems.length > 0) {
     const { error } = await supabase.from("financial_items").insert(
-      snapshot.finances.map((item) => ({
+      financialItems.map((item) => ({
         ...(isUuid(item.id) ? { id: item.id } : {}),
         festival_id: festivalId,
+        position_number: item.positionNumber,
         type: item.type,
         booking_date: item.bookingDate || new Date().toISOString().slice(0, 10),
         category: item.category,
@@ -482,7 +506,7 @@ async function replaceFestivalChildren(
     );
     if (error) throw error;
 
-    const splits = snapshot.finances.flatMap((item) =>
+    const splits = financialItems.flatMap((item) =>
       isUuid(item.id)
         ? (item.accountSplits ?? [])
             .filter((split) => isUuid(split.accountId) && split.amount > 0)
@@ -670,6 +694,7 @@ export async function saveFinancialItemsToSupabase(
   if (budgetError) throw budgetError;
 
   await saveFinanceAccountsToSupabase(supabase, clubId, snapshot.financeAccounts ?? []);
+  const financialItems = normalizeFinancePositionNumbers(snapshot.finances);
 
   const { error: deleteError } = await supabase
     .from("financial_items")
@@ -678,12 +703,13 @@ export async function saveFinancialItemsToSupabase(
 
   if (deleteError) throw deleteError;
 
-  if (snapshot.finances.length === 0) return;
+  if (financialItems.length === 0) return;
 
   const { error: insertError } = await supabase.from("financial_items").insert(
-    snapshot.finances.map((item) => ({
+    financialItems.map((item) => ({
       ...(isUuid(item.id) ? { id: item.id } : {}),
       festival_id: festivalId,
+      position_number: item.positionNumber,
       type: item.type,
       booking_date: item.bookingDate || new Date().toISOString().slice(0, 10),
       category: item.category,
@@ -697,7 +723,7 @@ export async function saveFinancialItemsToSupabase(
 
   if (insertError) throw insertError;
 
-  const splits = snapshot.finances.flatMap((item) =>
+  const splits = financialItems.flatMap((item) =>
     isUuid(item.id)
       ? (item.accountSplits ?? [])
           .filter((split) => isUuid(split.accountId) && split.amount > 0)
@@ -826,7 +852,7 @@ export async function loadClubFestivalFromSupabase(
       .order("sort_order", { ascending: true }),
     supabase
       .from("financial_items")
-      .select("id,type,booking_date,category,description,amount,status,attachment_name,attachment_data")
+      .select("id,position_number,type,booking_date,category,description,amount,status,attachment_name,attachment_data")
       .eq("festival_id", festival.id)
       .order("booking_date", { ascending: true })
       .order("created_at", { ascending: true }),
@@ -992,6 +1018,7 @@ export async function loadClubFestivalFromSupabase(
     })),
     finances: (financesResult.data ?? []).map((item) => ({
       id: String(item.id),
+      positionNumber: Number(item.position_number),
       type: item.type === "revenue" ? "revenue" : "expense",
       bookingDate: String(item.booking_date),
       category: String(item.category),

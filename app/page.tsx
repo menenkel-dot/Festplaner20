@@ -137,6 +137,7 @@ interface ReservationFieldAnswer {
 
 interface FinancialItem {
   id: string;
+  positionNumber?: number;
   type: 'expense' | 'revenue';
   bookingDate: string;
   category: string;
@@ -592,6 +593,37 @@ const normalizeFinancialItem = (item: FinancialItem): FinancialItem => ({
   bookingDate: item.bookingDate || toIsoDate(new Date()),
 });
 
+const normalizeFinancialItems = (items: FinancialItem[]): FinancialItem[] => {
+  const validPositions = items
+    .map((item) => Number(item.positionNumber))
+    .filter((position) => Number.isInteger(position) && position > 0);
+  const usedPositions = new Set<number>();
+  let nextPosition = Math.max(0, ...validPositions) + 1;
+
+  return items.map((rawItem) => {
+    const item = normalizeFinancialItem(rawItem);
+    const requestedPosition = Number(item.positionNumber);
+    if (Number.isInteger(requestedPosition) && requestedPosition > 0 && !usedPositions.has(requestedPosition)) {
+      usedPositions.add(requestedPosition);
+      return { ...item, positionNumber: requestedPosition };
+    }
+
+    while (usedPositions.has(nextPosition)) nextPosition += 1;
+    const positionNumber = nextPosition;
+    usedPositions.add(positionNumber);
+    nextPosition += 1;
+    return { ...item, positionNumber };
+  });
+};
+
+const getNextFinancePositionNumber = (items: FinancialItem[]) => Math.max(
+  0,
+  ...items.map((item) => Number(item.positionNumber)).filter((position) => Number.isInteger(position) && position > 0),
+) + 1;
+
+const formatFinancePositionNumber = (positionNumber?: number) =>
+  `POS-${String(Number(positionNumber) > 0 ? Math.trunc(Number(positionNumber)) : 0).padStart(4, "0")}`;
+
 const formatCurrency = (value: number) => new Intl.NumberFormat("de-DE", {
   style: "currency",
   currency: "EUR",
@@ -788,7 +820,7 @@ export default function Page() {
   const [financeCategoryFilter, setFinanceCategoryFilter] = React.useState("all");
   const [financeDateFrom, setFinanceDateFrom] = React.useState("");
   const [financeDateTo, setFinanceDateTo] = React.useState("");
-  const [financeSort, setFinanceSort] = React.useState<"date_desc" | "date_asc" | "amount_desc" | "amount_asc" | "category_asc">("date_desc");
+  const [financeSort, setFinanceSort] = React.useState<"date_desc" | "date_asc" | "position_asc" | "amount_desc" | "amount_asc" | "category_asc">("date_desc");
   const [financeChartAccountId, setFinanceChartAccountId] = React.useState("all");
 
   // --- Public Helper Sign-Up Forms State ---
@@ -955,7 +987,7 @@ export default function Page() {
       if (storedReservationFields) setReservationFields(normalizeStoredData(JSON.parse(storedReservationFields)));
       if (storedFinanceAccounts) setFinanceAccounts(normalizeStoredData(JSON.parse(storedFinanceAccounts)));
       if (storedFinances) {
-        setFinances((normalizeStoredData(JSON.parse(storedFinances)) as FinancialItem[]).map(normalizeFinancialItem));
+        setFinances(normalizeFinancialItems(normalizeStoredData(JSON.parse(storedFinances)) as FinancialItem[]));
       }
       if (storedBudget && !Number.isNaN(Number(storedBudget))) setBudget(Number(storedBudget));
     }, 0);
@@ -1089,7 +1121,7 @@ export default function Page() {
     setReservations(snapshot.reservations);
     setReservationFields(snapshot.reservationFields ?? []);
     setFinanceAccounts(snapshot.financeAccounts ?? []);
-    setFinances(snapshot.finances.map(normalizeFinancialItem));
+    setFinances(normalizeFinancialItems(snapshot.finances));
     setBudget(snapshot.budget);
 
     saveToStorage("vfp_fest_info", snapshot.festInfo);
@@ -1102,7 +1134,7 @@ export default function Page() {
     saveToStorage("vfp_reservations", snapshot.reservations);
     saveToStorage("vfp_reservation_fields", snapshot.reservationFields ?? []);
     saveToStorage("vfp_finance_accounts", snapshot.financeAccounts ?? []);
-    saveToStorage("vfp_finances", snapshot.finances.map(normalizeFinancialItem));
+    saveToStorage("vfp_finances", normalizeFinancialItems(snapshot.finances));
     saveToStorage("vfp_budget", snapshot.budget);
     lastSyncedPayloadRef.current = JSON.stringify(snapshot);
     window.setTimeout(() => {
@@ -3131,6 +3163,7 @@ export default function Page() {
 
     const newItem: FinancialItem = {
       id: createClientId(),
+      positionNumber: getNextFinancePositionNumber(finances),
       type: newFinType,
       bookingDate: newFinBookingDate,
       category: newFinCat,
@@ -3154,7 +3187,7 @@ export default function Page() {
     setNewFinUseSplit(false);
     setNewFinSplits([]);
     setShowFinForm(false);
-    showToast("Finanzbuchung erfolgreich erfasst!");
+    showToast(`${formatFinancePositionNumber(newItem.positionNumber)} erfolgreich erfasst!`);
   };
 
   const handleDeleteFinance = (id: string) => {
@@ -3189,6 +3222,7 @@ export default function Page() {
       [{ value: "Vorläufiger Gewinn" }, { value: netBalance, format: "#,##0.00" }],
       [],
       [
+        { value: "Positionsnummer", fontWeight: "bold" },
         { value: "Typ", fontWeight: "bold" },
         { value: "Buchungsdatum", fontWeight: "bold" },
         { value: "Kategorie", fontWeight: "bold" },
@@ -3201,6 +3235,7 @@ export default function Page() {
         { value: "Beleg", fontWeight: "bold" },
       ],
       ...finances.map((item) => [
+        { value: formatFinancePositionNumber(item.positionNumber) },
         { value: item.type === "expense" ? "Ausgabe" : "Einnahme" },
         { value: item.bookingDate },
         { value: item.category },
@@ -3228,8 +3263,9 @@ export default function Page() {
       ["Erwartete Ausgaben", totalExpenses.toFixed(2)],
       ["Vorläufiger Gewinn", netBalance.toFixed(2)],
       [],
-      ["Typ", "Buchungsdatum", "Kategorie", "Beschreibung", "Betrag EUR", "Status", "Konto", "Split", "Split-Beträge", "Beleg"],
+      ["Positionsnummer", "Typ", "Buchungsdatum", "Kategorie", "Beschreibung", "Betrag EUR", "Status", "Konto", "Split", "Split-Beträge", "Beleg"],
       ...finances.map((item) => [
+        formatFinancePositionNumber(item.positionNumber),
         item.type === "expense" ? "Ausgabe" : "Einnahme",
         item.bookingDate,
         item.category,
@@ -3772,7 +3808,7 @@ export default function Page() {
     .filter((item) => {
       const query = financeSearch.trim().toLocaleLowerCase("de");
       const itemDate = getFinanceItemDate(item);
-      const matchesSearch = !query || [item.category, item.description, item.attachmentName ?? ""]
+      const matchesSearch = !query || [formatFinancePositionNumber(item.positionNumber), String(item.positionNumber ?? ""), item.category, item.description, item.attachmentName ?? ""]
         .some((value) => value.toLocaleLowerCase("de").includes(query));
       const matchesType = financeTypeFilter === "all" || item.type === financeTypeFilter;
       const matchesStatus = financeStatusFilter === "all" || item.status === financeStatusFilter;
@@ -3785,6 +3821,7 @@ export default function Page() {
       return matchesSearch && matchesType && matchesStatus && matchesCategory && matchesDate && matchesAccount;
     })
     .sort((left, right) => {
+      if (financeSort === "position_asc") return Number(left.positionNumber ?? 0) - Number(right.positionNumber ?? 0);
       if (financeSort === "date_desc") return getFinanceItemDate(right).localeCompare(getFinanceItemDate(left));
       if (financeSort === "date_asc") return getFinanceItemDate(left).localeCompare(getFinanceItemDate(right));
       if (financeSort === "amount_desc") return right.amount - left.amount;
@@ -9065,7 +9102,7 @@ export default function Page() {
                             type="search"
                             value={financeSearch}
                             onChange={(event) => setFinanceSearch(event.target.value)}
-                            placeholder="Kategorie, Beschreibung oder Beleg"
+                            placeholder="Positionsnummer, Kategorie, Beschreibung oder Beleg"
                             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600"
                           />
                         </label>
@@ -9118,6 +9155,7 @@ export default function Page() {
                           <select value={financeSort} onChange={(event) => setFinanceSort(event.target.value as typeof financeSort)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-600">
                             <option value="date_desc">Datum: neueste zuerst</option>
                             <option value="date_asc">Datum: älteste zuerst</option>
+                            <option value="position_asc">Positionsnummer: aufsteigend</option>
                             <option value="amount_desc">Betrag: höchster zuerst</option>
                             <option value="amount_asc">Betrag: niedrigster zuerst</option>
                             <option value="category_asc">Kategorie: A bis Z</option>
@@ -9158,6 +9196,9 @@ export default function Page() {
                       {filteredFinances.map((f) => (
                         <div key={f.id} className="flex flex-col gap-3 p-3.5 border border-slate-200 rounded-lg bg-slate-50/50 group hover:bg-slate-50 transition-colors sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0 space-y-0.5">
+                            <span className="mr-1.5 inline-block rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-mono text-[9px] font-extrabold tracking-wide text-blue-700">
+                              {formatFinancePositionNumber(f.positionNumber)}
+                            </span>
                             <span className={`inline-block text-[9px] uppercase tracking-wide font-extrabold px-1.5 py-0.5 rounded mr-1.5 ${
                               f.type === "expense" ? "bg-rose-50 text-rose-700 border border-rose-200" : "bg-emerald-50 text-emerald-800 border border-emerald-200"
                             }`}>
@@ -9273,6 +9314,15 @@ export default function Page() {
                           </div>
                           
                           <form onSubmit={handleAddFinance} className="space-y-3">
+                            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-blue-600">Positionsnummer</span>
+                                <span className="font-mono text-xs font-extrabold text-blue-800">
+                                  {formatFinancePositionNumber(getNextFinancePositionNumber(finances))}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-[9px] text-blue-700">Wird automatisch vergeben und bleibt dieser Buchung dauerhaft zugeordnet.</p>
+                            </div>
                             <div>
                               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Typ</label>
                               <div className="grid grid-cols-2 gap-2">
