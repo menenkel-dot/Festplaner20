@@ -12,6 +12,7 @@ import {
   PackageX,
   Pencil,
   Plus,
+  RefreshCw,
   RotateCcw,
   Scale,
   Search,
@@ -111,6 +112,26 @@ function getErrorCode(error: unknown) {
   return String((error as { code?: unknown }).code ?? "");
 }
 
+function getInventoryErrorMessage(error: unknown, fallback: string) {
+  const code = getErrorCode(error);
+  if (code === "42501") return "Dir fehlt die Berechtigung für die Warenwirtschaft.";
+  if (code === "42P01" || code === "PGRST205") return "Die Warenwirtschaft ist in Supabase noch nicht vollständig eingerichtet.";
+  return fallback;
+}
+
+function InventoryStatusBadge({ item, stock }: { item: InventoryItem; stock: number }) {
+  if (!item.isActive) {
+    return <span className="inline-flex shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">Archiviert</span>;
+  }
+  if (stock <= 0) {
+    return <span className="inline-flex shrink-0 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-rose-700">Nicht verfügbar</span>;
+  }
+  if (stock <= item.minimumStock) {
+    return <span className="inline-flex shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700">Nachbestellen</span>;
+  }
+  return <span className="inline-flex shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-700">Ausreichend</span>;
+}
+
 export function InventoryPanel({
   supabase,
   festivalId,
@@ -129,6 +150,7 @@ export function InventoryPanel({
   const [statusFilter, setStatusFilter] = React.useState<InventoryStatusFilter>("all");
   const [selectedDayKey, setSelectedDayKey] = React.useState("all");
   const [sidePanel, setSidePanel] = React.useState<SidePanel>(null);
+  const [reloadVersion, setReloadVersion] = React.useState(0);
 
   const [itemName, setItemName] = React.useState("");
   const [itemCategory, setItemCategory] = React.useState("");
@@ -143,48 +165,52 @@ export function InventoryPanel({
   const [movementNote, setMovementNote] = React.useState("");
 
   React.useEffect(() => {
+    if (!sidePanel) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidePanel(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sidePanel]);
+
+  React.useEffect(() => {
     let active = true;
     const loadingTimer = window.setTimeout(() => {
       if (!active) return;
       setLoading(true);
       setLoadError("");
       setSidePanel(null);
-    }, 0);
+      setItems([]);
+      setMovements([]);
 
-    if (!festivalId) {
-      const emptyTimer = window.setTimeout(() => {
-        if (!active) return;
+      if (!festivalId) {
         setItems([]);
         setMovements([]);
         setLoading(false);
-      }, 0);
-      return () => {
-        active = false;
-        window.clearTimeout(loadingTimer);
-        window.clearTimeout(emptyTimer);
-      };
-    }
+        return;
+      }
 
-    loadInventoryDataFromSupabase(supabase, festivalId)
-      .then((data) => {
-        if (!active) return;
-        setItems(data.items);
-        setMovements(data.movements);
-      })
-      .catch((error) => {
-        if (!active) return;
-        console.error("Inventory load failed", error);
-        setLoadError("Die Warenwirtschaft konnte nicht geladen werden.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+      void loadInventoryDataFromSupabase(supabase, festivalId)
+        .then((data) => {
+          if (!active) return;
+          setItems(data.items);
+          setMovements(data.movements);
+        })
+        .catch((error) => {
+          if (!active) return;
+          console.error("Inventory load failed", error);
+          setLoadError(getInventoryErrorMessage(error, "Die Warenwirtschaft konnte nicht geladen werden."));
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, 0);
 
     return () => {
       active = false;
       window.clearTimeout(loadingTimer);
     };
-  }, [festivalId, supabase]);
+  }, [festivalId, reloadVersion, supabase]);
 
   const movementsByItem = React.useMemo(() => {
     const grouped = new Map<string, InventoryMovement[]>();
@@ -248,6 +274,15 @@ export function InventoryPanel({
   const panelItem = sidePanel && "itemId" in sidePanel
     ? items.find((item) => item.id === sidePanel.itemId)
     : undefined;
+  const panelCurrentStock = panelItem ? metricsByItem.get(panelItem.id)?.stock ?? 0 : 0;
+  const enteredMovementQuantity = Number(movementQuantity);
+  const panelProjectedStock = sidePanel?.kind === "movement" && movementQuantity !== "" && Number.isFinite(enteredMovementQuantity)
+    ? sidePanel.movementType === "count"
+      ? enteredMovementQuantity
+      : sidePanel.movementType === "receipt"
+        ? panelCurrentStock + enteredMovementQuantity
+        : panelCurrentStock - enteredMovementQuantity
+    : panelCurrentStock;
 
   const resetItemForm = () => {
     setItemName("");
@@ -361,7 +396,7 @@ export function InventoryPanel({
       onToast(
         getErrorCode(error) === "23505"
           ? "Ein aktiver Artikel mit diesem Namen und dieser Einheit existiert bereits."
-          : "Artikel konnte nicht gespeichert werden.",
+          : getInventoryErrorMessage(error, "Artikel konnte nicht gespeichert werden."),
         "error",
       );
     } finally {
@@ -383,7 +418,7 @@ export function InventoryPanel({
       onToast(
         getErrorCode(error) === "23505"
           ? "Ein aktiver Artikel mit diesem Namen und dieser Einheit existiert bereits."
-          : "Artikelstatus konnte nicht geändert werden.",
+          : getInventoryErrorMessage(error, "Artikelstatus konnte nicht geändert werden."),
         "error",
       );
     }
@@ -402,6 +437,11 @@ export function InventoryPanel({
     }
     if (!day) {
       onToast("Bitte einen Festtag auswählen.", "error");
+      return;
+    }
+    const currentStock = metricsByItem.get(sidePanel.itemId)?.stock ?? 0;
+    if (sidePanel.movementType === "consumption" && quantity > currentStock) {
+      onToast(`Der Verbrauch übersteigt den aktuellen Bestand von ${formatQuantity(currentStock)}.`, "error");
       return;
     }
 
@@ -423,7 +463,7 @@ export function InventoryPanel({
       onToast(`${MOVEMENT_LABELS[sidePanel.movementType]} gespeichert.`, "success");
     } catch (error) {
       console.error("Inventory movement save failed", error);
-      onToast("Warenbewegung konnte nicht gespeichert werden.", "error");
+      onToast(getInventoryErrorMessage(error, "Warenbewegung konnte nicht gespeichert werden."), "error");
     } finally {
       setSaving(false);
     }
@@ -438,7 +478,7 @@ export function InventoryPanel({
       onToast("Warenbewegung gelöscht.", "info");
     } catch (error) {
       console.error("Inventory movement delete failed", error);
-      onToast("Warenbewegung konnte nicht gelöscht werden.", "error");
+      onToast(getInventoryErrorMessage(error, "Warenbewegung konnte nicht gelöscht werden."), "error");
     }
   };
 
@@ -477,27 +517,45 @@ export function InventoryPanel({
       </div>
 
       {loadError && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">
-          {loadError}
+        <div className="flex flex-col gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800 sm:flex-row sm:items-center sm:justify-between">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => setReloadVersion((current) => current + 1)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-100"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Erneut laden
+          </button>
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <button type="button" onClick={() => setStatusFilter("low")} className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-5 text-left shadow-sm hover:bg-amber-100/70">
+        <button
+          type="button"
+          aria-pressed={statusFilter === "low"}
+          onClick={() => setStatusFilter((current) => current === "low" ? "all" : "low")}
+          className={`flex items-center justify-between rounded-lg border p-5 text-left shadow-sm transition-colors ${statusFilter === "low" ? "border-amber-500 bg-amber-100 ring-2 ring-amber-500/20" : "border-amber-200 bg-amber-50 hover:bg-amber-100/70"}`}
+        >
           <div>
             <span className="block text-[10px] font-bold uppercase tracking-widest text-amber-700">Nachbestellen</span>
             <strong className="mt-1 block text-2xl text-amber-900">{lowStockCount}</strong>
           </div>
           <AlertTriangle className="h-6 w-6 text-amber-600" />
         </button>
-        <button type="button" onClick={() => setStatusFilter("out")} className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-5 text-left shadow-sm hover:bg-rose-100/70">
+        <button
+          type="button"
+          aria-pressed={statusFilter === "out"}
+          onClick={() => setStatusFilter((current) => current === "out" ? "all" : "out")}
+          className={`flex items-center justify-between rounded-lg border p-5 text-left shadow-sm transition-colors ${statusFilter === "out" ? "border-rose-500 bg-rose-100 ring-2 ring-rose-500/20" : "border-rose-200 bg-rose-50 hover:bg-rose-100/70"}`}
+        >
           <div>
             <span className="block text-[10px] font-bold uppercase tracking-widest text-rose-700">Nicht verfügbar</span>
             <strong className="mt-1 block text-2xl text-rose-900">{outOfStockCount}</strong>
           </div>
           <PackageX className="h-6 w-6 text-rose-600" />
         </button>
-        <div className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+        <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
           <div>
             <span className="block text-[10px] font-bold uppercase tracking-widest text-blue-700">Bewegungen im Filter</span>
             <strong className="mt-1 block text-2xl text-blue-900">{selectedMovementCount}</strong>
@@ -506,8 +564,38 @@ export function InventoryPanel({
         </div>
       </div>
 
+      {sidePanel && (
+        <button
+          type="button"
+          aria-label="Erfassung schließen"
+          onClick={() => setSidePanel(null)}
+          className="fixed inset-0 z-40 bg-slate-950/45 xl:hidden"
+        />
+      )}
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 xl:col-span-8">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Artikel und Bestände</h3>
+              <p className="mt-1 text-xs text-slate-500">Der Bestand zeigt immer den aktuellen Gesamtwert. Lieferungen und Verbrauch folgen dem gewählten Festtag.</p>
+            </div>
+            {(search || categoryFilter !== "all" || statusFilter !== "all" || selectedDayKey !== "all") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setCategoryFilter("all");
+                  setStatusFilter("all");
+                  setSelectedDayKey("all");
+                }}
+                className="mt-2 inline-flex items-center gap-1.5 self-start rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:bg-slate-100 hover:text-slate-800 sm:mt-0"
+              >
+                <X className="h-3.5 w-3.5" />
+                Filter zurücksetzen
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
             <label className="relative md:col-span-2">
               <span className="sr-only">Artikel durchsuchen</span>
@@ -538,7 +626,7 @@ export function InventoryPanel({
             </label>
           </div>
 
-          <label className="block max-w-xs space-y-1">
+          <label className="block max-w-sm space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Auswertung</span>
             <select value={selectedDayKey} onChange={(event) => setSelectedDayKey(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-600">
               <option value="all">Gesamtes Fest</option>
@@ -546,14 +634,14 @@ export function InventoryPanel({
             </select>
           </label>
 
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[920px] text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   <th className="py-2 pr-3">Artikel</th>
-                  <th className="py-2 pr-3">Bestand</th>
-                  <th className="py-2 pr-3">Lieferung</th>
-                  <th className="py-2 pr-3">Verbrauch</th>
+                  <th className="py-2 pr-3">Gesamtbestand</th>
+                  <th className="py-2 pr-3">Lieferung im Filter</th>
+                  <th className="py-2 pr-3">Verbrauch im Filter</th>
                   <th className="py-2 pr-3">Mindestbestand</th>
                   <th className="py-2 pr-3">Status</th>
                   <th className="py-2 text-right">Aktionen</th>
@@ -562,8 +650,6 @@ export function InventoryPanel({
               <tbody className="divide-y divide-slate-100">
                 {visibleItems.map((item) => {
                   const metrics = metricsByItem.get(item.id) ?? { stock: 0, receipts: 0, consumption: 0 };
-                  const isOut = metrics.stock <= 0;
-                  const isLow = !isOut && metrics.stock <= item.minimumStock;
                   return (
                     <tr key={item.id} className={`align-top ${item.isActive ? "hover:bg-slate-50/70" : "bg-slate-50 opacity-70"}`}>
                       <td className="py-3 pr-3">
@@ -575,22 +661,14 @@ export function InventoryPanel({
                       <td className="py-3 pr-3 font-semibold text-rose-700">−{formatQuantity(metrics.consumption)} {item.unit}</td>
                       <td className="py-3 pr-3 text-slate-600">{formatQuantity(item.minimumStock)} {item.unit}</td>
                       <td className="py-3 pr-3">
-                        {!item.isActive ? (
-                          <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">Archiviert</span>
-                        ) : isOut ? (
-                          <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-rose-700">Nicht verfügbar</span>
-                        ) : isLow ? (
-                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700">Nachbestellen</span>
-                        ) : (
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-700">Ausreichend</span>
-                        )}
+                        <InventoryStatusBadge item={item} stock={metrics.stock} />
                       </td>
                       <td className="py-3 text-right">
                         <div className="inline-flex items-center gap-1">
                           {item.isActive ? (
                             <>
                               <button type="button" onClick={() => openMovementForm(item, "receipt")} title="Lieferung buchen" aria-label={`${item.name}: Lieferung buchen`} className="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-50"><ArrowDownToLine className="h-4 w-4" /></button>
-                              <button type="button" onClick={() => openMovementForm(item, "consumption")} title="Verbrauch buchen" aria-label={`${item.name}: Verbrauch buchen`} className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50"><ArrowUpFromLine className="h-4 w-4" /></button>
+                              <button type="button" onClick={() => openMovementForm(item, "consumption")} disabled={metrics.stock <= 0} title={metrics.stock <= 0 ? "Kein Bestand für einen Verbrauch vorhanden" : "Verbrauch buchen"} aria-label={`${item.name}: Verbrauch buchen`} className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"><ArrowUpFromLine className="h-4 w-4" /></button>
                               <button type="button" onClick={() => openMovementForm(item, "count")} title="Bestand zählen" aria-label={`${item.name}: Bestand zählen`} className="rounded-md p-1.5 text-blue-600 hover:bg-blue-50"><Scale className="h-4 w-4" /></button>
                               <button type="button" onClick={() => openEditItemForm(item)} title="Artikel bearbeiten" aria-label={`${item.name} bearbeiten`} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
                               <button type="button" onClick={() => handleSetItemActive(item, false)} title="Artikel archivieren" aria-label={`${item.name} archivieren`} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><Archive className="h-4 w-4" /></button>
@@ -608,6 +686,72 @@ export function InventoryPanel({
             </table>
           </div>
 
+          <div className="space-y-3 lg:hidden">
+            {visibleItems.map((item) => {
+              const metrics = metricsByItem.get(item.id) ?? { stock: 0, receipts: 0, consumption: 0 };
+              return (
+                <article key={item.id} className={`rounded-lg border p-4 ${item.isActive ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50"}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h4 className="truncate text-sm font-bold text-slate-900">{item.name}</h4>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500">{item.category || "Ohne Kategorie"} · {item.unit}</p>
+                    </div>
+                    <InventoryStatusBadge item={item} stock={metrics.stock} />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    <div className="rounded-lg bg-slate-100 p-2.5">
+                      <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">Bestand</span>
+                      <strong className="mt-1 block text-sm text-slate-900">{formatQuantity(metrics.stock)}</strong>
+                    </div>
+                    <div className="rounded-lg bg-emerald-50 p-2.5">
+                      <span className="block text-[9px] font-bold uppercase tracking-wider text-emerald-700">Lieferung</span>
+                      <strong className="mt-1 block text-sm text-emerald-800">+{formatQuantity(metrics.receipts)}</strong>
+                    </div>
+                    <div className="rounded-lg bg-rose-50 p-2.5">
+                      <span className="block text-[9px] font-bold uppercase tracking-wider text-rose-700">Verbrauch</span>
+                      <strong className="mt-1 block text-sm text-rose-800">−{formatQuantity(metrics.consumption)}</strong>
+                    </div>
+                  </div>
+
+                  {item.isActive ? (
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      <button type="button" onClick={() => openMovementForm(item, "receipt")} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-bold text-emerald-800">
+                        <ArrowDownToLine className="h-3.5 w-3.5" /> Lieferung
+                      </button>
+                      <button type="button" onClick={() => openMovementForm(item, "consumption")} disabled={metrics.stock <= 0} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[10px] font-bold text-rose-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400">
+                        <ArrowUpFromLine className="h-3.5 w-3.5" /> Verbrauch
+                      </button>
+                      <button type="button" onClick={() => openMovementForm(item, "count")} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[10px] font-bold text-blue-800">
+                        <Scale className="h-3.5 w-3.5" /> Zählen
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => handleSetItemActive(item, true)} className="mt-4 inline-flex w-full min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-bold uppercase tracking-wider text-blue-700">
+                      <RotateCcw className="h-3.5 w-3.5" /> Wieder aktivieren
+                    </button>
+                  )}
+
+                  <div className="mt-3 flex items-center justify-end gap-1 border-t border-slate-100 pt-3">
+                    <button type="button" onClick={() => setSidePanel({ kind: "history", itemId: item.id })} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100">
+                      <History className="h-3.5 w-3.5" /> Verlauf
+                    </button>
+                    {item.isActive && (
+                      <>
+                        <button type="button" onClick={() => openEditItemForm(item)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100">
+                          <Pencil className="h-3.5 w-3.5" /> Bearbeiten
+                        </button>
+                        <button type="button" onClick={() => handleSetItemActive(item, false)} aria-label={`${item.name} archivieren`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100">
+                          <Archive className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
           {(loading || visibleItems.length === 0) && (
             <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-xs font-semibold text-slate-500">
               {loading ? "Warenwirtschaft wird geladen ..." : items.length === 0 ? "Noch keine Artikel vorhanden." : "Keine Artikel für diesen Filter gefunden."}
@@ -615,7 +759,10 @@ export function InventoryPanel({
           )}
         </section>
 
-        <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 xl:col-span-4">
+        <aside
+          aria-label="Warenwirtschaft erfassen"
+          className={`${sidePanel ? "fixed inset-x-3 bottom-3 top-16 z-50 block overflow-y-auto" : "hidden"} rounded-lg border border-slate-200 bg-white p-5 shadow-2xl sm:inset-x-6 sm:p-6 xl:sticky xl:inset-auto xl:top-24 xl:z-auto xl:col-span-4 xl:block xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto xl:shadow-sm`}
+        >
           {!sidePanel ? (
             <div className="flex min-h-[240px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 p-6 text-center">
               <Package className="h-8 w-8 text-slate-300" />
@@ -634,7 +781,7 @@ export function InventoryPanel({
               <form onSubmit={handleSaveItem} className="space-y-3">
                 <label className="block space-y-1">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Artikelname *</span>
-                  <input type="text" value={itemName} onChange={(event) => setItemName(event.target.value)} maxLength={120} placeholder="z. B. Bier 50 l" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600" />
+                  <input type="text" value={itemName} onChange={(event) => setItemName(event.target.value)} maxLength={120} placeholder="z. B. Bier 50 l" autoFocus className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600" />
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block space-y-1">
@@ -697,6 +844,16 @@ export function InventoryPanel({
                     <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{sidePanel.movementType === "count" ? "Gezählter Bestand" : "Menge"} ({panelItem.unit}) *</span>
                     <input type="number" min={sidePanel.movementType === "count" ? 0 : 0.001} step="0.001" value={movementQuantity} onChange={(event) => setMovementQuantity(event.target.value)} autoFocus className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600" />
                   </label>
+                  <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div>
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Aktuell</span>
+                      <strong className="mt-1 block text-sm text-slate-900">{formatQuantity(panelCurrentStock)} {panelItem.unit}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Danach</span>
+                      <strong className={`mt-1 block text-sm ${panelProjectedStock < 0 ? "text-rose-700" : "text-slate-900"}`}>{formatQuantity(panelProjectedStock)} {panelItem.unit}</strong>
+                    </div>
+                  </div>
                   <label className="block space-y-1">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Notiz</span>
                     <textarea value={movementNote} onChange={(event) => setMovementNote(event.target.value)} maxLength={1000} rows={3} placeholder="Optional, z. B. Lieferant oder Grund" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600" />
