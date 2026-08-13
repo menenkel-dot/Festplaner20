@@ -641,15 +641,15 @@ export function InventoryPanel({
                           <button type="button" onClick={() => openMovementForm(item)} className="rounded-lg bg-slate-900 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-slate-800">
                             Bestand ändern
                           </button>
+                          <button type="button" onClick={() => setSidePanel({ kind: "history", itemId: item.id })} title="Verlauf anzeigen" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50">
+                            <History className="h-3.5 w-3.5" /> Verlauf
+                          </button>
                           <details className="relative text-left">
                             <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
                               <MoreHorizontal className="h-4 w-4" />
                               <span className="sr-only">Weitere Aktionen für {item.name}</span>
                             </summary>
                             <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                              <button type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setSidePanel({ kind: "history", itemId: item.id }); }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                                <History className="h-4 w-4" /> Verlauf anzeigen
-                              </button>
                               <button type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); openEditItemForm(item); }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">
                                 <Pencil className="h-4 w-4" /> Artikel bearbeiten
                               </button>
@@ -688,16 +688,20 @@ export function InventoryPanel({
                     <p className="text-right text-[10px] font-semibold text-slate-500">Mindestbestand<br /><span className="text-xs text-slate-700">{formatQuantity(item.minimumStock)} {item.unit}</span></p>
                   </div>
 
-                  <button type="button" onClick={() => openMovementForm(item)} className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-slate-900 px-4 text-xs font-bold uppercase tracking-wider text-white hover:bg-slate-800">
-                    Bestand ändern
-                  </button>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => openMovementForm(item)} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-slate-900 px-3 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-slate-800">
+                      Bestand ändern
+                    </button>
+                    <button type="button" onClick={() => setSidePanel({ kind: "history", itemId: item.id })} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50">
+                      <History className="h-3.5 w-3.5" /> Verlauf
+                    </button>
+                  </div>
 
                   <details className="mt-2 rounded-lg border border-slate-200">
                     <summary className="flex min-h-10 cursor-pointer list-none items-center justify-center gap-2 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
                       <MoreHorizontal className="h-4 w-4" /> Weitere Aktionen
                     </summary>
                     <div className="grid gap-1 border-t border-slate-200 p-2">
-                      <button type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setSidePanel({ kind: "history", itemId: item.id }); }} className="flex min-h-10 items-center gap-2 rounded-md px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"><History className="h-4 w-4" /> Verlauf anzeigen</button>
                       <button type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); openEditItemForm(item); }} className="flex min-h-10 items-center gap-2 rounded-md px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"><Pencil className="h-4 w-4" /> Artikel bearbeiten</button>
                       <button type="button" disabled={deletingItemId === item.id} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void handleDeleteItem(item); }} className="flex min-h-10 items-center gap-2 border-t border-slate-100 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-wait disabled:opacity-50"><Trash2 className="h-4 w-4" /> {deletingItemId === item.id ? "Wird gelöscht ..." : "Artikel löschen"}</button>
                     </div>
