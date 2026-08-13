@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { PwaRegister } from './pwa-register';
+import { PwaInstallBanner } from './pwa-install-banner';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body suppressHydrationWarning className="min-h-screen antialiased font-sans bg-slate-50 text-slate-900">
         <PwaRegister />
         {children}
+        <PwaInstallBanner />
         <footer className="border-t border-slate-200/70 bg-white/70 px-4 py-4 text-center text-[10px] font-medium leading-relaxed text-slate-400 [body:has(>.festplaner-login-page)_&]:hidden">
           <span>©2026 </span>
           {creditUrl ? (
