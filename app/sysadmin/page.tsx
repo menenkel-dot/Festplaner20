@@ -613,7 +613,12 @@ export default function SysAdminPage() {
 
                       <details
                         open={adminFormOpenByClub[club.id] ?? adminCount === 0}
-                        onToggle={(event) => setAdminFormOpenByClub((current) => ({ ...current, [club.id]: event.currentTarget.open }))}
+                        onToggle={(event) => {
+                          const isOpen = event.currentTarget.open;
+                          setAdminFormOpenByClub((current) => current[club.id] === isOpen
+                            ? current
+                            : { ...current, [club.id]: isOpen });
+                        }}
                         className="mb-3 overflow-hidden rounded-lg border border-blue-200 bg-blue-50/50"
                       >
                         <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-3 text-xs font-bold text-blue-800 hover:bg-blue-50 [&::-webkit-details-marker]:hidden">
