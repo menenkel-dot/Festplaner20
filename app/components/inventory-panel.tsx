@@ -7,6 +7,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   History,
+  MoreHorizontal,
   Package,
   PackageX,
   Pencil,
@@ -18,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  deleteInventoryItemFromSupabase,
   deleteInventoryMovementFromSupabase,
   loadInventoryDataFromSupabase,
   saveInventoryItemToSupabase,
@@ -58,6 +60,17 @@ const MOVEMENT_LABELS: Record<InventoryMovementType, string> = {
   consumption: "Verbrauch",
 };
 
+const MOVEMENT_OPTIONS: Array<{
+  type: InventoryMovementType;
+  label: string;
+  description: string;
+  icon: typeof ArrowDownToLine;
+}> = [
+  { type: "receipt", label: "Lieferung", description: "Bestand erhöhen", icon: ArrowDownToLine },
+  { type: "consumption", label: "Verbrauch", description: "Bestand reduzieren", icon: ArrowUpFromLine },
+  { type: "count", label: "Zählung", description: "Bestand korrigieren", icon: Scale },
+];
+
 function createInventoryId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (char) =>
@@ -71,13 +84,6 @@ function formatQuantity(value: number) {
 
 function getDayKey(day: InventoryFestDay) {
   return day.date ? `date:${day.date}` : `label:${day.label}`;
-}
-
-function movementMatchesDay(movement: InventoryMovement, dayKey: string) {
-  if (dayKey === "all") return true;
-  return movement.dayDate
-    ? dayKey === `date:${movement.dayDate}`
-    : dayKey === `label:${movement.dayLabel}`;
 }
 
 function compareMovements(left: InventoryMovement, right: InventoryMovement) {
@@ -142,9 +148,9 @@ export function InventoryPanel({
   const deferredSearch = React.useDeferredValue(search);
   const [categoryFilter, setCategoryFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState<InventoryStatusFilter>("all");
-  const [selectedDayKey, setSelectedDayKey] = React.useState("all");
   const [sidePanel, setSidePanel] = React.useState<SidePanel>(null);
   const [reloadVersion, setReloadVersion] = React.useState(0);
+  const [deletingItemId, setDeletingItemId] = React.useState<string | null>(null);
 
   const [itemName, setItemName] = React.useState("");
   const [itemCategory, setItemCategory] = React.useState("");
@@ -217,24 +223,15 @@ export function InventoryPanel({
   }, [movements]);
 
   const metricsByItem = React.useMemo(() => {
-    const metrics = new Map<string, { stock: number; receipts: number; consumption: number }>();
+    const metrics = new Map<string, { stock: number }>();
     for (const item of items) {
       const itemMovements = movementsByItem.get(item.id) ?? [];
-      let receipts = 0;
-      let consumption = 0;
-      for (const movement of itemMovements) {
-        if (!movementMatchesDay(movement, selectedDayKey)) continue;
-        if (movement.type === "receipt") receipts += movement.quantity;
-        if (movement.type === "consumption") consumption += movement.quantity;
-      }
       metrics.set(item.id, {
         stock: calculateCurrentStock(itemMovements),
-        receipts,
-        consumption,
       });
     }
     return metrics;
-  }, [items, movementsByItem, selectedDayKey]);
+  }, [items, movementsByItem]);
 
   const categories = React.useMemo(() => Array.from(new Set(
     items.map((item) => item.category.trim()).filter(Boolean),
@@ -243,11 +240,11 @@ export function InventoryPanel({
   const visibleItems = React.useMemo(() => {
     const query = deferredSearch.trim().toLocaleLowerCase("de");
     return items.filter((item) => {
-      const metrics = metricsByItem.get(item.id) ?? { stock: 0, receipts: 0, consumption: 0 };
+      const metrics = metricsByItem.get(item.id) ?? { stock: 0 };
       const matchesSearch = !query || [item.name, item.category, item.unit, item.notes]
         .some((value) => value.toLocaleLowerCase("de").includes(query));
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
-      const matchesStatus = item.isActive && (
+      const matchesStatus = (
         statusFilter === "all"
         || statusFilter === "out" && metrics.stock <= 0
         || statusFilter === "low" && metrics.stock > 0 && metrics.stock <= item.minimumStock
@@ -256,9 +253,8 @@ export function InventoryPanel({
     });
   }, [categoryFilter, deferredSearch, items, metricsByItem, statusFilter]);
 
-  const activeItems = items.filter((item) => item.isActive);
-  const outOfStockCount = activeItems.filter((item) => (metricsByItem.get(item.id)?.stock ?? 0) <= 0).length;
-  const lowStockCount = activeItems.filter((item) => {
+  const outOfStockCount = items.filter((item) => (metricsByItem.get(item.id)?.stock ?? 0) <= 0).length;
+  const lowStockCount = items.filter((item) => {
     const stock = metricsByItem.get(item.id)?.stock ?? 0;
     return stock > 0 && stock <= item.minimumStock;
   }).length;
@@ -301,11 +297,16 @@ export function InventoryPanel({
     setSidePanel({ kind: "item", itemId: item.id });
   };
 
-  const openMovementForm = (item: InventoryItem, movementType: InventoryMovementType) => {
+  const openMovementForm = (item: InventoryItem) => {
     setMovementQuantity("");
     setMovementNote("");
-    setMovementDayKey(selectedDayKey !== "all" ? selectedDayKey : festDays[0] ? getDayKey(festDays[0]) : "");
-    setSidePanel({ kind: "movement", itemId: item.id, movementType });
+    setMovementDayKey(festDays[0] ? getDayKey(festDays[0]) : "");
+    setSidePanel({ kind: "movement", itemId: item.id, movementType: "receipt" });
+  };
+
+  const selectMovementType = (movementType: InventoryMovementType) => {
+    setMovementQuantity("");
+    setSidePanel((current) => current?.kind === "movement" ? { ...current, movementType } : current);
   };
 
   const resolveDay = (key: string) => festDays.find((day) => getDayKey(day) === key);
@@ -440,6 +441,28 @@ export function InventoryPanel({
     }
   };
 
+  const handleDeleteItem = async (item: InventoryItem) => {
+    if (!festivalId || deletingItemId) return;
+    const confirmed = window.confirm(
+      `Artikel „${item.name}“ wirklich löschen?\n\nAlle Lieferungen, Verbräuche und Zählungen dieses Artikels werden ebenfalls gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingItemId(item.id);
+    try {
+      await deleteInventoryItemFromSupabase(supabase, festivalId, item.id);
+      setItems((current) => current.filter((entry) => entry.id !== item.id));
+      setMovements((current) => current.filter((entry) => entry.itemId !== item.id));
+      setSidePanel((current) => current && "itemId" in current && current.itemId === item.id ? null : current);
+      onToast("Artikel und zugehörige Buchungen wurden gelöscht.", "success");
+    } catch (error) {
+      console.error("Inventory item delete failed", error);
+      onToast(getInventoryErrorMessage(error, "Artikel konnte nicht gelöscht werden."), "error");
+    } finally {
+      setDeletingItemId(null);
+    }
+  };
+
   const handleDeleteMovement = async (movement: InventoryMovement) => {
     if (!festivalId || !window.confirm(`${MOVEMENT_LABELS[movement.type]} mit ${formatQuantity(movement.quantity)} löschen?`)) return;
 
@@ -542,16 +565,15 @@ export function InventoryPanel({
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Artikel und Bestände</h3>
-              <p className="mt-1 text-xs text-slate-500">Der Bestand zeigt immer den aktuellen Gesamtwert. Lieferungen und Verbrauch folgen dem gewählten Festtag.</p>
+              <p className="mt-1 text-xs text-slate-500">Sieh den aktuellen Bestand und buche Änderungen über eine zentrale Aktion.</p>
             </div>
-            {(search || categoryFilter !== "all" || statusFilter !== "all" || selectedDayKey !== "all") && (
+            {(search || categoryFilter !== "all" || statusFilter !== "all") && (
               <button
                 type="button"
                 onClick={() => {
                   setSearch("");
                   setCategoryFilter("all");
                   setStatusFilter("all");
-                  setSelectedDayKey("all");
                 }}
                 className="mt-2 inline-flex items-center gap-1.5 self-start rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:bg-slate-100 hover:text-slate-800 sm:mt-0"
               >
@@ -560,8 +582,8 @@ export function InventoryPanel({
               </button>
             )}
           </div>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-            <label className="relative md:col-span-2">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <label className="relative">
               <span className="sr-only">Artikel durchsuchen</span>
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
@@ -582,29 +604,19 @@ export function InventoryPanel({
             <label>
               <span className="sr-only">Bestandsstatus filtern</span>
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as InventoryStatusFilter)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600">
-                <option value="all">Aktive Artikel</option>
+                <option value="all">Alle Artikel</option>
                 <option value="low">Nachbestellen</option>
                 <option value="out">Nicht verfügbar</option>
               </select>
             </label>
           </div>
 
-          <label className="block max-w-sm space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Auswertung</span>
-            <select value={selectedDayKey} onChange={(event) => setSelectedDayKey(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-600">
-              <option value="all">Gesamtes Fest</option>
-              {festDays.map((day) => <option key={getDayKey(day)} value={getDayKey(day)}>{day.label}</option>)}
-            </select>
-          </label>
-
-          <div className="hidden overflow-x-auto lg:block">
-            <table className="w-full min-w-[920px] text-left text-xs">
+          <div className="hidden lg:block">
+            <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   <th className="py-2 pr-3">Artikel</th>
-                  <th className="py-2 pr-3">Gesamtbestand</th>
-                  <th className="py-2 pr-3">Lieferung im Filter</th>
-                  <th className="py-2 pr-3">Verbrauch im Filter</th>
+                  <th className="py-2 pr-3">Aktueller Bestand</th>
                   <th className="py-2 pr-3">Mindestbestand</th>
                   <th className="py-2 pr-3">Status</th>
                   <th className="py-2 text-right">Aktionen</th>
@@ -612,7 +624,7 @@ export function InventoryPanel({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visibleItems.map((item) => {
-                  const metrics = metricsByItem.get(item.id) ?? { stock: 0, receipts: 0, consumption: 0 };
+                  const metrics = metricsByItem.get(item.id) ?? { stock: 0 };
                   return (
                     <tr key={item.id} className="align-top hover:bg-slate-50/70">
                       <td className="py-3 pr-3">
@@ -620,19 +632,32 @@ export function InventoryPanel({
                         <p className="mt-0.5 text-[10px] text-slate-500">{item.category || "Ohne Kategorie"} · {item.unit}</p>
                       </td>
                       <td className="py-3 pr-3 text-sm font-bold text-slate-900">{formatQuantity(metrics.stock)} {item.unit}</td>
-                      <td className="py-3 pr-3 font-semibold text-emerald-700">+{formatQuantity(metrics.receipts)} {item.unit}</td>
-                      <td className="py-3 pr-3 font-semibold text-rose-700">−{formatQuantity(metrics.consumption)} {item.unit}</td>
                       <td className="py-3 pr-3 text-slate-600">{formatQuantity(item.minimumStock)} {item.unit}</td>
                       <td className="py-3 pr-3">
                         <InventoryStatusBadge item={item} stock={metrics.stock} />
                       </td>
                       <td className="py-3 text-right">
-                        <div className="inline-flex items-center gap-1">
-                          <button type="button" onClick={() => openMovementForm(item, "receipt")} title="Lieferung buchen" aria-label={`${item.name}: Lieferung buchen`} className="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-50"><ArrowDownToLine className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => openMovementForm(item, "consumption")} disabled={metrics.stock <= 0} title={metrics.stock <= 0 ? "Kein Bestand für einen Verbrauch vorhanden" : "Verbrauch buchen"} aria-label={`${item.name}: Verbrauch buchen`} className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"><ArrowUpFromLine className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => openMovementForm(item, "count")} title="Bestand zählen" aria-label={`${item.name}: Bestand zählen`} className="rounded-md p-1.5 text-blue-600 hover:bg-blue-50"><Scale className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => openEditItemForm(item)} title="Artikel bearbeiten" aria-label={`${item.name} bearbeiten`} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => setSidePanel({ kind: "history", itemId: item.id })} title="Verlauf anzeigen" aria-label={`${item.name}: Verlauf anzeigen`} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><History className="h-4 w-4" /></button>
+                        <div className="inline-flex items-center gap-2">
+                          <button type="button" onClick={() => openMovementForm(item)} className="rounded-lg bg-slate-900 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-slate-800">
+                            Bestand ändern
+                          </button>
+                          <details className="relative text-left">
+                            <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+                              <MoreHorizontal className="h-4 w-4" />
+                              <span className="sr-only">Weitere Aktionen für {item.name}</span>
+                            </summary>
+                            <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                              <button type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setSidePanel({ kind: "history", itemId: item.id }); }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                <History className="h-4 w-4" /> Verlauf anzeigen
+                              </button>
+                              <button type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); openEditItemForm(item); }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                <Pencil className="h-4 w-4" /> Artikel bearbeiten
+                              </button>
+                              <button type="button" disabled={deletingItemId === item.id} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void handleDeleteItem(item); }} className="mt-1 flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-wait disabled:opacity-50">
+                                <Trash2 className="h-4 w-4" /> {deletingItemId === item.id ? "Wird gelöscht ..." : "Artikel löschen"}
+                              </button>
+                            </div>
+                          </details>
                         </div>
                       </td>
                     </tr>
@@ -644,7 +669,7 @@ export function InventoryPanel({
 
           <div className="space-y-3 lg:hidden">
             {visibleItems.map((item) => {
-              const metrics = metricsByItem.get(item.id) ?? { stock: 0, receipts: 0, consumption: 0 };
+              const metrics = metricsByItem.get(item.id) ?? { stock: 0 };
               return (
                 <article key={item.id} className="rounded-lg border border-slate-200 bg-white p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -655,41 +680,28 @@ export function InventoryPanel({
                     <InventoryStatusBadge item={item} stock={metrics.stock} />
                   </div>
 
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    <div className="rounded-lg bg-slate-100 p-2.5">
-                      <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">Bestand</span>
-                      <strong className="mt-1 block text-sm text-slate-900">{formatQuantity(metrics.stock)}</strong>
+                  <div className="mt-4 flex items-end justify-between gap-4 rounded-lg bg-slate-50 p-3">
+                    <div>
+                      <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">Aktueller Bestand</span>
+                      <strong className="mt-1 block text-xl text-slate-900">{formatQuantity(metrics.stock)} <span className="text-sm font-semibold text-slate-500">{item.unit}</span></strong>
                     </div>
-                    <div className="rounded-lg bg-emerald-50 p-2.5">
-                      <span className="block text-[9px] font-bold uppercase tracking-wider text-emerald-700">Lieferung</span>
-                      <strong className="mt-1 block text-sm text-emerald-800">+{formatQuantity(metrics.receipts)}</strong>
-                    </div>
-                    <div className="rounded-lg bg-rose-50 p-2.5">
-                      <span className="block text-[9px] font-bold uppercase tracking-wider text-rose-700">Verbrauch</span>
-                      <strong className="mt-1 block text-sm text-rose-800">−{formatQuantity(metrics.consumption)}</strong>
-                    </div>
+                    <p className="text-right text-[10px] font-semibold text-slate-500">Mindestbestand<br /><span className="text-xs text-slate-700">{formatQuantity(item.minimumStock)} {item.unit}</span></p>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    <button type="button" onClick={() => openMovementForm(item, "receipt")} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-bold text-emerald-800">
-                      <ArrowDownToLine className="h-3.5 w-3.5" /> Lieferung
-                    </button>
-                    <button type="button" onClick={() => openMovementForm(item, "consumption")} disabled={metrics.stock <= 0} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[10px] font-bold text-rose-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400">
-                      <ArrowUpFromLine className="h-3.5 w-3.5" /> Verbrauch
-                    </button>
-                    <button type="button" onClick={() => openMovementForm(item, "count")} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[10px] font-bold text-blue-800">
-                      <Scale className="h-3.5 w-3.5" /> Zählen
-                    </button>
-                  </div>
+                  <button type="button" onClick={() => openMovementForm(item)} className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-slate-900 px-4 text-xs font-bold uppercase tracking-wider text-white hover:bg-slate-800">
+                    Bestand ändern
+                  </button>
 
-                  <div className="mt-3 flex items-center justify-end gap-1 border-t border-slate-100 pt-3">
-                    <button type="button" onClick={() => setSidePanel({ kind: "history", itemId: item.id })} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100">
-                      <History className="h-3.5 w-3.5" /> Verlauf
-                    </button>
-                    <button type="button" onClick={() => openEditItemForm(item)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100">
-                      <Pencil className="h-3.5 w-3.5" /> Bearbeiten
-                    </button>
-                  </div>
+                  <details className="mt-2 rounded-lg border border-slate-200">
+                    <summary className="flex min-h-10 cursor-pointer list-none items-center justify-center gap-2 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+                      <MoreHorizontal className="h-4 w-4" /> Weitere Aktionen
+                    </summary>
+                    <div className="grid gap-1 border-t border-slate-200 p-2">
+                      <button type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setSidePanel({ kind: "history", itemId: item.id }); }} className="flex min-h-10 items-center gap-2 rounded-md px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"><History className="h-4 w-4" /> Verlauf anzeigen</button>
+                      <button type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); openEditItemForm(item); }} className="flex min-h-10 items-center gap-2 rounded-md px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"><Pencil className="h-4 w-4" /> Artikel bearbeiten</button>
+                      <button type="button" disabled={deletingItemId === item.id} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void handleDeleteItem(item); }} className="flex min-h-10 items-center gap-2 border-t border-slate-100 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-wait disabled:opacity-50"><Trash2 className="h-4 w-4" /> {deletingItemId === item.id ? "Wird gelöscht ..." : "Artikel löschen"}</button>
+                    </div>
+                  </details>
                 </article>
               );
             })}
@@ -709,8 +721,8 @@ export function InventoryPanel({
           {!sidePanel ? (
             <div className="flex min-h-[240px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 p-6 text-center">
               <Package className="h-8 w-8 text-slate-300" />
-              <p className="mt-3 text-xs font-bold uppercase tracking-wider text-slate-500">Schnell erfassen</p>
-              <p className="mt-1 max-w-xs text-xs leading-relaxed text-slate-500">Wähle an einem Artikel Lieferung, Verbrauch, Zählung oder Verlauf aus.</p>
+              <p className="mt-3 text-xs font-bold uppercase tracking-wider text-slate-500">Bestand verwalten</p>
+              <p className="mt-1 max-w-xs text-xs leading-relaxed text-slate-500">Wähle bei einem Artikel „Bestand ändern“, um eine Lieferung, einen Verbrauch oder eine Zählung zu buchen.</p>
               <button type="button" onClick={openNewItemForm} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50">
                 <Plus className="h-3.5 w-3.5" />Artikel anlegen
               </button>
@@ -768,7 +780,7 @@ export function InventoryPanel({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">{MOVEMENT_LABELS[sidePanel.movementType]}</h3>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Bestand ändern</h3>
                   <p className="mt-1 text-sm font-bold text-slate-900">{panelItem.name}</p>
                 </div>
                 <button type="button" onClick={() => setSidePanel(null)} aria-label="Formular schließen" className="rounded p-1 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
@@ -777,6 +789,32 @@ export function InventoryPanel({
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-800">Lege zuerst Festtage im Fest-Programm an.</div>
               ) : (
                 <form onSubmit={handleSaveMovement} className="space-y-3">
+                  <fieldset className="space-y-2">
+                    <legend className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Was möchtest du buchen?</legend>
+                    <div className="grid gap-2">
+                      {MOVEMENT_OPTIONS.map((option) => {
+                        const Icon = option.icon;
+                        const selected = sidePanel.movementType === option.type;
+                        const disabled = option.type === "consumption" && panelCurrentStock <= 0;
+                        return (
+                          <button
+                            key={option.type}
+                            type="button"
+                            aria-pressed={selected}
+                            disabled={disabled}
+                            onClick={() => selectMovementType(option.type)}
+                            className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${selected ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600" : "border-slate-200 bg-white hover:bg-slate-50"} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-50`}
+                          >
+                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${selected ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}><Icon className="h-4 w-4" /></span>
+                            <span>
+                              <strong className="block text-xs text-slate-900">{option.label}</strong>
+                              <span className="mt-0.5 block text-[10px] text-slate-500">{disabled ? "Kein Bestand vorhanden" : option.description}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
                   <label className="block space-y-1">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Festtag *</span>
                     <select value={movementDayKey} onChange={(event) => setMovementDayKey(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600">
@@ -802,7 +840,7 @@ export function InventoryPanel({
                     <textarea value={movementNote} onChange={(event) => setMovementNote(event.target.value)} maxLength={1000} rows={3} placeholder="Optional, z. B. Lieferant oder Grund" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600" />
                   </label>
                   <button type="submit" disabled={saving || movementQuantity === "" || !movementDayKey} className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-bold uppercase text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300">
-                    {saving ? "Wird gespeichert ..." : `${MOVEMENT_LABELS[sidePanel.movementType]} speichern`}
+                    {saving ? "Wird gespeichert ..." : "Buchung speichern"}
                   </button>
                 </form>
               )}

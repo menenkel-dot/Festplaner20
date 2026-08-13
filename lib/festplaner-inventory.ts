@@ -102,22 +102,21 @@ export async function saveInventoryItemToSupabase(
   return mapInventoryItem(data);
 }
 
-export async function setInventoryItemActiveInSupabase(
+export async function deleteInventoryItemFromSupabase(
   supabase: SupabaseClient,
   festivalId: string,
   itemId: string,
-  isActive: boolean,
 ) {
   const { data, error } = await supabase
     .from("festival_inventory_items")
-    .update({ is_active: isActive })
+    .delete()
     .eq("festival_id", festivalId)
     .eq("id", itemId)
-    .select("id,festival_id,name,category,unit,minimum_stock,notes,is_active")
-    .single();
+    .select("id")
+    .maybeSingle();
 
   if (error) throw error;
-  return mapInventoryItem(data);
+  if (!data) throw new Error("Artikel wurde nicht gefunden oder darf nicht gelöscht werden.");
 }
 
 export async function saveInventoryMovementToSupabase(
