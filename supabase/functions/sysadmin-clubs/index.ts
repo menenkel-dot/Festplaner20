@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.106.2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.106.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,9 +9,12 @@ const fullAdminPermissions = [
   "dashboard",
   "info",
   "meetings",
+  "invitations",
+  "contacts",
   "shifts",
   "reservations",
   "costs",
+  "inventory",
   "users",
   "dashboard:reserved_tables",
   "dashboard:pending_reservations",
@@ -55,7 +58,7 @@ const parseDataUrl = (value: string) => {
 };
 
 const findUserByEmail = async (
-  adminClient: ReturnType<typeof createClient>,
+  adminClient: SupabaseClient,
   email: string,
 ) => {
   for (let page = 1; page <= 10; page += 1) {
@@ -116,6 +119,115 @@ Deno.serve(async (req) => {
 
     const body = req.method === "GET" ? { action: "list" } : await req.json().catch(() => ({ action: "list" }));
     const action = String(body.action ?? "list");
+
+    if (action === "add_admin") {
+      const clubId = String(body.clubId ?? "");
+      const adminEmail = String(body.adminEmail ?? "").trim().toLowerCase();
+      const adminPassword = String(body.adminPassword ?? "");
+      const adminFullName = String(body.adminFullName ?? "").trim();
+
+      if (!clubId || !adminEmail) {
+        return new Response(JSON.stringify({ error: "clubId and adminEmail are required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: club, error: clubError } = await adminClient
+        .from("clubs")
+        .select("id,name")
+        .eq("id", clubId)
+        .maybeSingle();
+
+      if (clubError) throw clubError;
+      if (!club) {
+        return new Response(JSON.stringify({ error: "Club not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: existingRole, error: roleLookupError } = await adminClient
+        .from("app_roles")
+        .select("id")
+        .eq("club_id", club.id)
+        .eq("name", "Admin")
+        .maybeSingle();
+
+      if (roleLookupError) throw roleLookupError;
+
+      let roleId = existingRole?.id;
+      if (!roleId) {
+        const { data: createdRole, error: createRoleError } = await adminClient
+          .from("app_roles")
+          .insert({
+            club_id: club.id,
+            name: "Admin",
+            description: "Voller Zugriff auf diesen Verein",
+            permissions: fullAdminPermissions,
+          })
+          .select("id")
+          .single();
+
+        if (createRoleError) throw createRoleError;
+        roleId = createdRole.id;
+      }
+
+      let authUser = await findUserByEmail(adminClient, adminEmail);
+      let createdAuthUser = false;
+
+      if (!authUser) {
+        if (!adminPassword) {
+          return new Response(JSON.stringify({ error: "Ein initiales Passwort ist für einen neuen Login erforderlich." }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const { data: createdUser, error: createUserError } = await adminClient.auth.admin.createUser({
+          email: adminEmail,
+          password: adminPassword,
+          email_confirm: true,
+          user_metadata: { full_name: adminFullName },
+        });
+
+        if (createUserError) throw createUserError;
+        authUser = createdUser.user;
+        createdAuthUser = true;
+      }
+
+      if (!authUser?.id) throw new Error("Admin user was not created.");
+
+      try {
+        const profileValues = {
+          user_id: authUser.id,
+          email: adminEmail,
+          ...(adminFullName ? { full_name: adminFullName } : {}),
+        };
+        const { error: profileError } = await adminClient.from("app_user_profiles").upsert(profileValues);
+
+        if (profileError) throw profileError;
+
+        const { error: membershipError } = await adminClient.from("club_memberships").upsert({
+          club_id: club.id,
+          user_id: authUser.id,
+          role_id: roleId,
+        }, { onConflict: "club_id,user_id" });
+
+        if (membershipError) throw membershipError;
+      } catch (error) {
+        if (createdAuthUser) await adminClient.auth.admin.deleteUser(authUser.id);
+        throw error;
+      }
+
+      return new Response(JSON.stringify({
+        userId: authUser.id,
+        createdAuthUser,
+        clubName: club.name,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (action === "create") {
       const clubName = String(body.clubName ?? "").trim();

@@ -61,7 +61,10 @@ Deno.serve(async (req) => {
         .maybeSingle(),
     ]);
 
-    const permissions = callerMembership?.role?.permissions ?? [];
+    const callerRole = (Array.isArray(callerMembership?.role)
+      ? callerMembership.role[0]
+      : callerMembership?.role) as { permissions?: string[] } | null | undefined;
+    const permissions = callerRole?.permissions ?? [];
     if (!systemAdmin && !permissions.includes("users")) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
@@ -79,7 +82,7 @@ Deno.serve(async (req) => {
 
       const { data: membership, error: membershipLookupError } = await adminClient
         .from("club_memberships")
-        .select("club_id,user_id")
+        .select("club_id,user_id,role_id,role:app_roles(name)")
         .eq("club_id", clubId)
         .eq("user_id", userId)
         .maybeSingle();
@@ -90,6 +93,25 @@ Deno.serve(async (req) => {
           status: 404,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+
+      const membershipRole = (Array.isArray(membership.role)
+        ? membership.role[0]
+        : membership.role) as { name?: string } | null | undefined;
+      if (membershipRole?.name === "Admin") {
+        const { count: adminCount, error: adminCountError } = await adminClient
+          .from("club_memberships")
+          .select("user_id", { count: "exact", head: true })
+          .eq("club_id", clubId)
+          .eq("role_id", membership.role_id);
+
+        if (adminCountError) throw adminCountError;
+        if ((adminCount ?? 0) <= 1) {
+          return new Response(JSON.stringify({ error: "Der letzte Vereins-Admin kann nicht gelöscht werden. Lege zuerst einen weiteren Admin an." }), {
+            status: 409,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
 
       const { error: deleteMembershipError } = await adminClient

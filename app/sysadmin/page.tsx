@@ -28,10 +28,29 @@ interface MembershipRow {
   } | null;
 }
 
+interface ClubAdminDraft {
+  fullName: string;
+  email: string;
+  password: string;
+}
+
+const EMPTY_ADMIN_DRAFT: ClubAdminDraft = { fullName: "", email: "", password: "" };
+
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) return error.message;
   if (error && typeof error === "object" && "message" in error) return String((error as { message?: unknown }).message);
   return "Unbekannter Fehler";
+};
+
+const getFunctionErrorMessage = async (error: unknown, fallback: string) => {
+  if (error && typeof error === "object" && "context" in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      const payload = await context.clone().json().catch(() => null) as { error?: unknown } | null;
+      if (payload?.error) return `${fallback}: ${String(payload.error)}`;
+    }
+  }
+  return `${fallback}: ${getErrorMessage(error)}`;
 };
 
 export default function SysAdminPage() {
@@ -59,6 +78,9 @@ export default function SysAdminPage() {
   const [adminPassword, setAdminPassword] = React.useState("");
   const [deleteConfirmByClub, setDeleteConfirmByClub] = React.useState<Record<string, string>>({});
   const [clubSearch, setClubSearch] = React.useState("");
+  const [adminDraftByClub, setAdminDraftByClub] = React.useState<Record<string, ClubAdminDraft>>({});
+  const [adminFormOpenByClub, setAdminFormOpenByClub] = React.useState<Record<string, boolean>>({});
+  const [creatingAdminClubId, setCreatingAdminClubId] = React.useState<string | null>(null);
 
   const loadData = React.useCallback(async () => {
     if (!supabase || !user) return;
@@ -273,9 +295,51 @@ export default function SysAdminPage() {
       setMessage(data?.deletedAuthUser ? `${label} wurde inklusive Login gelöscht.` : `${label} wurde aus ${club.name} entfernt.`);
       await loadData();
     } catch (error) {
-      setMessage(`Benutzer konnte nicht gelöscht werden: ${getErrorMessage(error)}`);
+      setMessage(await getFunctionErrorMessage(error, "Benutzer konnte nicht gelöscht werden"));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updateAdminDraft = (clubId: string, field: keyof ClubAdminDraft, value: string) => {
+    setAdminDraftByClub((current) => ({
+      ...current,
+      [clubId]: { ...(current[clubId] ?? EMPTY_ADMIN_DRAFT), [field]: value },
+    }));
+  };
+
+  const handleCreateClubAdmin = async (event: React.FormEvent, club: ClubRow) => {
+    event.preventDefault();
+    if (!supabase || creatingAdminClubId) return;
+    const draft = adminDraftByClub[club.id] ?? EMPTY_ADMIN_DRAFT;
+    if (!draft.email.trim()) return;
+
+    setCreatingAdminClubId(club.id);
+    setMessage("");
+    try {
+      const { data, error } = await supabase.functions.invoke("sysadmin-clubs", {
+        body: {
+          action: "add_admin",
+          clubId: club.id,
+          adminFullName: draft.fullName.trim(),
+          adminEmail: draft.email.trim(),
+          adminPassword: draft.password,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(String(data.error));
+
+      const successMessage = data?.createdAuthUser
+        ? `Admin ${draft.email.trim()} wurde für ${club.name} angelegt. Der Login ist sofort nutzbar.`
+        : `Der bestehende Login ${draft.email.trim()} wurde ${club.name} als Admin zugeordnet. Das bisherige Passwort bleibt gültig.`;
+      setAdminDraftByClub((current) => ({ ...current, [club.id]: EMPTY_ADMIN_DRAFT }));
+      setAdminFormOpenByClub((current) => ({ ...current, [club.id]: false }));
+      await loadData();
+      setMessage(successMessage);
+    } catch (error) {
+      setMessage(await getFunctionErrorMessage(error, `Admin für ${club.name} konnte nicht angelegt werden`));
+    } finally {
+      setCreatingAdminClubId(null);
     }
   };
 
@@ -369,7 +433,7 @@ export default function SysAdminPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900">Systemverwaltung</h1>
-              <p className="text-xs text-slate-500">Vereine anlegen und initiale Vereins-Admins erstellen.</p>
+              <p className="text-xs text-slate-500">Vereine und ihre Vereins-Admins zentral verwalten.</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -467,6 +531,8 @@ export default function SysAdminPage() {
             <div className="space-y-3">
               {visibleClubs.map((club) => {
                 const clubMembers = membersByClub.get(club.id) ?? [];
+                const adminCount = clubMembers.filter((member) => member.role?.name === "Admin").length;
+                const adminDraft = adminDraftByClub[club.id] ?? EMPTY_ADMIN_DRAFT;
                 return (
                   <div key={club.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                     <div className="flex flex-col gap-3 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
@@ -536,8 +602,71 @@ export default function SysAdminPage() {
                     <div className="border-t border-slate-200 p-4">
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Benutzer</h3>
-                        <span className="text-[10px] font-semibold text-slate-500">{clubMembers.length} zugeordnet</span>
+                        <span className="text-[10px] font-semibold text-slate-500">{clubMembers.length} zugeordnet · {adminCount} Admin</span>
                       </div>
+
+                      {adminCount === 0 && (
+                        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                          Dieser Verein hat aktuell keinen Admin. Lege einen Admin an, damit der Verein wieder verwaltet werden kann.
+                        </div>
+                      )}
+
+                      <details
+                        open={adminFormOpenByClub[club.id] ?? adminCount === 0}
+                        onToggle={(event) => setAdminFormOpenByClub((current) => ({ ...current, [club.id]: event.currentTarget.open }))}
+                        className="mb-3 overflow-hidden rounded-lg border border-blue-200 bg-blue-50/50"
+                      >
+                        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-3 text-xs font-bold text-blue-800 hover:bg-blue-50 [&::-webkit-details-marker]:hidden">
+                          <Plus className="h-4 w-4" /> Vereins-Admin hinzufügen
+                        </summary>
+                        <form onSubmit={(event) => handleCreateClubAdmin(event, club)} className="grid gap-3 border-t border-blue-100 bg-white p-3 sm:grid-cols-2">
+                          <label className="space-y-1 sm:col-span-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Vollständiger Name</span>
+                            <input
+                              type="text"
+                              value={adminDraft.fullName}
+                              onChange={(event) => updateAdminDraft(club.id, "fullName", event.target.value)}
+                              placeholder="Name des Admins"
+                              autoComplete="name"
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:bg-white focus:ring-1 focus:ring-blue-600"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">E-Mail-Adresse *</span>
+                            <input
+                              type="email"
+                              required
+                              value={adminDraft.email}
+                              onChange={(event) => updateAdminDraft(club.id, "email", event.target.value)}
+                              placeholder="admin@verein.de"
+                              autoComplete="email"
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:bg-white focus:ring-1 focus:ring-blue-600"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Initiales Passwort</span>
+                            <input
+                              type="password"
+                              value={adminDraft.password}
+                              onChange={(event) => updateAdminDraft(club.id, "password", event.target.value)}
+                              placeholder="Nur für neuen Login"
+                              autoComplete="new-password"
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:bg-white focus:ring-1 focus:ring-blue-600"
+                            />
+                          </label>
+                          <p className="text-[11px] leading-relaxed text-slate-500 sm:col-span-2">
+                            Für einen neuen Login ist ein Passwort erforderlich. Existiert die E-Mail bereits, wird der Benutzer nur diesem Verein als Admin zugeordnet und behält sein bisheriges Passwort.
+                          </p>
+                          <button
+                            type="submit"
+                            disabled={loading || creatingAdminClubId !== null || !adminDraft.email.trim()}
+                            className="rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 sm:col-span-2"
+                          >
+                            {creatingAdminClubId === club.id ? "Admin wird angelegt ..." : "Admin anlegen"}
+                          </button>
+                        </form>
+                      </details>
+
                       <div className="space-y-1">
                       {clubMembers.map((member) => (
                         <div key={`${member.club_id}-${member.user_id}`} className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
@@ -550,10 +679,14 @@ export default function SysAdminPage() {
                           </div>
                           <button
                             type="button"
-                            disabled={loading || member.user_id === user.id}
+                            disabled={loading || member.user_id === user.id || (member.role?.name === "Admin" && adminCount <= 1)}
                             onClick={() => handleDeleteMember(club, member)}
                             className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:bg-rose-50 disabled:bg-slate-100 disabled:text-slate-400 sm:w-auto"
-                            title={member.user_id === user.id ? "Eigener Benutzer kann nicht gelöscht werden" : "Benutzer löschen"}
+                            title={member.user_id === user.id
+                              ? "Eigener Benutzer kann nicht gelöscht werden"
+                              : member.role?.name === "Admin" && adminCount <= 1
+                                ? "Lege zuerst einen weiteren Vereins-Admin an"
+                                : "Benutzer löschen"}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                             Löschen
