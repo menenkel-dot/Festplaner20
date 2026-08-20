@@ -734,6 +734,8 @@ export default function Page() {
   const [newProtoDecisions, setNewProtoDecisions] = React.useState("");
   const [newProtoAttachmentName, setNewProtoAttachmentName] = React.useState("");
   const [newProtoAttachmentData, setNewProtoAttachmentData] = React.useState("");
+  const [selectedProtocolId, setSelectedProtocolId] = React.useState<string | null>(null);
+  const [editingProtocolId, setEditingProtocolId] = React.useState<string | null>(null);
 
   // Invitations Form
   const [newInvitationEmail, setNewInvitationEmail] = React.useState("");
@@ -879,6 +881,7 @@ export default function Page() {
   const [appUsers, setAppUsers] = React.useState<AppUserProfile[]>([]);
   const [currentPermissions, setCurrentPermissions] = React.useState<string[]>(FULL_ADMIN_PERMISSION_IDS);
   const [currentRoleName, setCurrentRoleName] = React.useState("");
+  const isClubAdmin = currentRoleName.trim().toLowerCase() === "admin";
   const [newRoleName, setNewRoleName] = React.useState("");
   const [newRoleDescription, setNewRoleDescription] = React.useState("");
   const [newRolePermissions, setNewRolePermissions] = React.useState<string[]>(["dashboard", ...DASHBOARD_WIDGET_PERMISSION_IDS]);
@@ -1116,6 +1119,16 @@ export default function Page() {
     setNewCheckCategoryId("");
     setCollapsedChecklistCategories(new Set());
     setProtocols(snapshot.protocols);
+    setSelectedProtocolId(null);
+    setEditingProtocolId(null);
+    setShowProtoForm(false);
+    setNewProtoTitle("");
+    setNewProtoDate("");
+    setNewProtoAttendees("");
+    setNewProtoTopics("");
+    setNewProtoDecisions("");
+    setNewProtoAttachmentName("");
+    setNewProtoAttachmentData("");
     setInvitations((snapshot.invitations ?? []).map(normalizeInvitationContact));
     setShifts(snapshot.shifts);
     setReservations(snapshot.reservations);
@@ -2364,14 +2377,25 @@ export default function Page() {
   };
 
   // Protocols
-  const handleAddProtocol = (e: React.FormEvent) => {
+  const resetProtocolForm = () => {
+    setEditingProtocolId(null);
+    setNewProtoTitle("");
+    setNewProtoDate("");
+    setNewProtoAttendees("");
+    setNewProtoTopics("");
+    setNewProtoDecisions("");
+    setNewProtoAttachmentName("");
+    setNewProtoAttachmentData("");
+  };
+
+  const handleSaveProtocol = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProtoTitle || !newProtoDate) {
       showToast("Bitte Titel und Datum ausfüllen.", "error");
       return;
     }
-    const newItem: Protocol = {
-      id: "pr_" + Date.now().toString(),
+    const savedItem: Protocol = {
+      id: editingProtocolId ?? "pr_" + Date.now().toString(),
       title: newProtoTitle,
       date: newProtoDate,
       attendees: newProtoAttendees,
@@ -2380,24 +2404,43 @@ export default function Page() {
       attachmentName: newProtoAttachmentName || undefined,
       attachmentData: newProtoAttachmentData || undefined,
     };
-    const updated = [...protocols, newItem];
+    const updated = editingProtocolId
+      ? protocols.map((protocol) => protocol.id === editingProtocolId ? savedItem : protocol)
+      : [...protocols, savedItem];
     setProtocols(updated);
     saveToStorage("vfp_protocols", updated);
-    setNewProtoTitle("");
-    setNewProtoDate("");
-    setNewProtoAttendees("");
-    setNewProtoTopics("");
-    setNewProtoDecisions("");
-    setNewProtoAttachmentName("");
-    setNewProtoAttachmentData("");
+    const wasEditing = Boolean(editingProtocolId);
+    resetProtocolForm();
     setShowProtoForm(false);
-    showToast("Besprechungsprotokoll gespeichert!");
+    showToast(wasEditing ? "Protokoll aktualisiert!" : "Besprechungsprotokoll gespeichert!");
+  };
+
+  const handleStartEditProtocol = (protocol: Protocol) => {
+    if (!isClubAdmin) return;
+    setEditingProtocolId(protocol.id);
+    setNewProtoTitle(protocol.title);
+    setNewProtoDate(protocol.date);
+    setNewProtoAttendees(protocol.attendees);
+    setNewProtoTopics(protocol.topics);
+    setNewProtoDecisions(protocol.decisions);
+    setNewProtoAttachmentName(protocol.attachmentName ?? "");
+    setNewProtoAttachmentData(protocol.attachmentData ?? "");
+    setSelectedProtocolId(null);
+    setShowProtoForm(true);
   };
 
   const handleDeleteProtocol = (id: string) => {
+    if (!isClubAdmin) return;
+    const protocol = protocols.find((item) => item.id === id);
+    if (!protocol || !window.confirm(`Protokoll „${protocol.title}“ wirklich löschen?`)) return;
     const updated = protocols.filter(p => p.id !== id);
     setProtocols(updated);
     saveToStorage("vfp_protocols", updated);
+    setSelectedProtocolId((current) => current === id ? null : current);
+    if (editingProtocolId === id) {
+      resetProtocolForm();
+      setShowProtoForm(false);
+    }
     showToast("Protokoll gelöscht.", "info");
   };
 
@@ -2412,6 +2455,10 @@ export default function Page() {
     };
     reader.readAsDataURL(file);
   };
+
+  const selectedProtocol = selectedProtocolId
+    ? protocols.find((protocol) => protocol.id === selectedProtocolId) ?? null
+    : null;
 
   // Invitations
   const normalizeInvitationEmail = (value: string) => value.trim().toLowerCase();
@@ -5081,6 +5128,106 @@ export default function Page() {
       )}
 
       <AnimatePresence>
+        {selectedProtocol && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-slate-950/55 px-3 py-5 sm:px-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="protocol-detail-title"
+            onClick={() => setSelectedProtocolId(null)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setSelectedProtocolId(null);
+            }}
+          >
+            <motion.article
+              initial={{ scale: 0.97, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.97, y: 10 }}
+              className="max-h-[calc(100svh-2.5rem)] w-full max-w-4xl overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">
+                    Sitzungsprotokoll · {selectedProtocol.date}
+                  </p>
+                  <h2 id="protocol-detail-title" className="mt-1 break-words text-xl font-bold text-slate-950 sm:text-2xl">
+                    {selectedProtocol.title}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedProtocolId(null)}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  title="Protokoll schließen"
+                  aria-label="Protokoll schließen"
+                  autoFocus
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </header>
+
+              <div className="space-y-6 px-4 py-5 sm:px-6 sm:py-6">
+                <section>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Teilnehmende</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                    {selectedProtocol.attendees || "Keine Teilnehmenden eingetragen."}
+                  </p>
+                </section>
+                <section className="border-t border-slate-100 pt-5">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Besprochene Themen</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                    {selectedProtocol.topics || "Keine Themen eingetragen."}
+                  </p>
+                </section>
+                <section className="border-t border-slate-100 pt-5">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Beschlüsse und Vereinbarungen</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-800">
+                    {selectedProtocol.decisions || "Keine Beschlüsse eingetragen."}
+                  </p>
+                </section>
+
+                {selectedProtocol.attachmentData && selectedProtocol.attachmentName && (
+                  <a
+                    href={selectedProtocol.attachmentData}
+                    download={selectedProtocol.attachmentName}
+                    className="inline-flex max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                  >
+                    <Paperclip className="h-4 w-4 shrink-0 text-blue-600" />
+                    <span className="truncate">{selectedProtocol.attachmentName}</span>
+                  </a>
+                )}
+              </div>
+
+              {isClubAdmin && (
+                <footer className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
+                  <button
+                    type="button"
+                    onClick={() => handleStartEditProtocol(selectedProtocol)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Bearbeiten
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteProtocol(selectedProtocol.id)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-rose-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Löschen
+                  </button>
+                </footer>
+              )}
+            </motion.article>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {financePaymentConfirmId && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -6235,36 +6382,71 @@ export default function Page() {
                       <span>Sitzungsprotokolle</span>
                     </h3>
 
-                    <div className="space-y-3.5 max-h-[300px] overflow-y-auto pr-1">
+                    <div className="space-y-3.5 max-h-[360px] overflow-y-auto pr-1">
                       {protocols.map((p) => (
-                        <div key={p.id} className="p-4 bg-slate-50/50 border border-slate-200 rounded-lg space-y-2 relative group">
+                        <article key={p.id} className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50/50 transition hover:border-blue-200 hover:bg-blue-50/30">
                           <button
-                            onClick={() => handleDeleteProtocol(p.id)}
-                            className="absolute top-2 right-2 text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                            type="button"
+                            onClick={() => setSelectedProtocolId(p.id)}
+                            className="block w-full p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-600"
+                            aria-label={`Protokoll ${p.title} vollständig anzeigen`}
                           >
-                            <X className="w-3.5 h-3.5" />
+                            <div className="flex items-start justify-between gap-3 text-[10px]">
+                              <span className="font-bold uppercase tracking-wider text-blue-600">{p.date}</span>
+                              <span className="shrink-0 font-bold text-slate-500">Ansehen</span>
+                            </div>
+                            <h4 className="mt-2 break-words text-sm font-bold text-slate-900">{p.title}</h4>
+                            <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-slate-500">
+                              <strong className="text-slate-700">Themen:</strong> {p.topics || "Keine Themen eingetragen"}
+                            </p>
+                            <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-500">
+                              <strong className="text-slate-700">Beschlüsse:</strong> {p.decisions || "Keine Beschlüsse eingetragen"}
+                            </p>
                           </button>
-                          
-                          <div className="flex justify-between items-center text-[10px] text-slate-400">
-                            <span className="font-bold text-blue-600 uppercase tracking-wider">{p.date}</span>
-                            <span className="font-semibold">{p.attendees}</span>
-                          </div>
-                          
-                          <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">{p.title}</h4>
-                          <p className="text-[11px] text-slate-500"><strong className="text-slate-700">Themen:</strong> {p.topics}</p>
-                          <p className="text-[11px] text-slate-500"><strong className="text-slate-700">Beschlüsse:</strong> {p.decisions}</p>
-                          {p.attachmentData && p.attachmentName && (
-                            <a
-                              href={p.attachmentData}
-                              download={p.attachmentName}
-                              className="inline-flex items-center space-x-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
-                            >
-                              <Paperclip className="w-3 h-3" />
-                              <span>{p.attachmentName}</span>
-                            </a>
+
+                          {((p.attachmentData && p.attachmentName) || isClubAdmin) && (
+                            <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-3 py-2">
+                              {p.attachmentData && p.attachmentName && (
+                                <a
+                                  href={p.attachmentData}
+                                  download={p.attachmentName}
+                                  className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
+                                >
+                                  <Paperclip className="h-3 w-3 shrink-0" />
+                                  <span className="max-w-40 truncate">{p.attachmentName}</span>
+                                </a>
+                              )}
+                              {isClubAdmin && (
+                                <div className="ml-auto flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditProtocol(p)}
+                                    className="rounded-md border border-slate-200 bg-white p-2 text-slate-500 hover:text-blue-600"
+                                    title="Protokoll bearbeiten"
+                                    aria-label={`${p.title} bearbeiten`}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteProtocol(p.id)}
+                                    className="rounded-md border border-rose-100 bg-white p-2 text-rose-600 hover:bg-rose-50"
+                                    title="Protokoll löschen"
+                                    aria-label={`${p.title} löschen`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           )}
-                        </div>
+                        </article>
                       ))}
+                      {protocols.length === 0 && (
+                        <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-xs text-slate-500">
+                          Noch keine Sitzungsprotokolle angelegt.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -6272,7 +6454,10 @@ export default function Page() {
                   <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
                     {!showProtoForm ? (
                       <button
-                        onClick={() => setShowProtoForm(true)}
+                        onClick={() => {
+                          resetProtocolForm();
+                          setShowProtoForm(true);
+                        }}
                         className="w-full h-full min-h-[120px] aspect-none border-2 border-dashed border-slate-200 hover:border-slate-400 hover:bg-slate-50/50 rounded-xl flex flex-col items-center justify-center text-slate-500 hover:text-slate-700 transition-all space-y-2 group"
                       >
                         <div className="w-10 h-10 bg-slate-100 group-hover:bg-slate-200 rounded-full flex items-center justify-center transition-colors">
@@ -6283,16 +6468,21 @@ export default function Page() {
                     ) : (
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Sitzung dokumentieren</h3>
-                          <button 
-                            onClick={() => setShowProtoForm(false)}
+                          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                            {editingProtocolId ? "Protokoll bearbeiten" : "Sitzung dokumentieren"}
+                          </h3>
+                          <button
+                            onClick={() => {
+                              resetProtocolForm();
+                              setShowProtoForm(false);
+                            }}
                             className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         </div>
                         
-                        <form onSubmit={handleAddProtocol} className="space-y-2.5">
+                        <form onSubmit={handleSaveProtocol} className="space-y-2.5">
                           <div className="grid grid-cols-2 gap-2">
                             <input
                               type="text"
@@ -6365,7 +6555,7 @@ export default function Page() {
                             type="submit"
                             className="w-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold py-2 rounded-lg transition-colors"
                           >
-                            Sitzung archivieren
+                            {editingProtocolId ? "Änderungen speichern" : "Sitzung speichern"}
                           </button>
                         </form>
                       </div>
